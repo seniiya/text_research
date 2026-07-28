@@ -1,10 +1,10 @@
 p_id,source,title,n_messages
-P01,plain,배 나오고 걱정돼,22
+P01,markdown,배 나오고 걱정돼,22
 P02,markdown,대학원 분야 추천,24
 P03,plain,스트레스 해소 방법,22
 P04,plain,안녕 지피티야,48
 P05,plain,인사 나누기,32
-P06,plain,강릉 버스 교통 상황,12
+P06,markdown,강릉 버스 교통 상황,12
 P07,markdown,수면 개선 팁,20
 P08,markdown,서브스턴스 페인터 금속 패임,22
 P09,plain,스파이더맨 개봉 기대,28

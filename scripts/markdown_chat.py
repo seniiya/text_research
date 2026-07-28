@@ -123,48 +123,65 @@ def strip_inline(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+def classify(line):
+    """줄 하나의 종류. 블록이 아니라 줄 단위로 본다.
+
+    GPT는 빈 줄 없이 '문단 -> 리스트 -> 문단'을 이어 쓰는 일이 잦다.
+    블록 첫 줄만 보고 판정하면 리스트 항목이 문단에 딸려 들어간다.
+    """
+    if HR.match(line):
+        return "hr"
+    if TABLE.match(line):
+        return "table"
+    if HEADING.match(line):
+        return "heading"
+    if LISTITEM.match(line):
+        return "list"
+    if QUOTE.match(line):
+        return "quote"
+    return "plain"
+
+
 def blocks(text):
-    """빈 줄로 문단을 끊고 종류를 붙인다. 코드펜스 안은 통째로 하나로 둔다."""
-    groups, buf, fence = [], [], False
+    """같은 종류의 줄끼리 묶는다. 빈 줄과 가로줄은 묶음을 끊는다.
+    코드펜스 안은 통째로 하나로 둔다."""
+    out, buf, kind, fence = [], [], None, False
+
+    def flush():
+        nonlocal buf, kind
+        if buf:
+            out.append((kind, buf))
+            buf, kind = [], None
+
     for line in text.split("\n"):
         if line.strip().startswith("```"):
-            # 펜스가 열릴 때도 앞 문단을 먼저 끊는다. 그러지 않으면 직전
-            # 일반 문단이 코드 블록에 딸려 들어간다.
-            if buf:
-                groups.append(("code" if fence else None, buf))
-                buf = []
+            if fence:
+                if buf:
+                    out.append(("code", buf))
+                    buf, kind = [], None
+            else:
+                flush()
             fence = not fence
             continue
         if fence:
             buf.append(line)
             continue
         if not line.strip():
-            if buf:
-                groups.append((None, buf))
-                buf = []
+            flush()
             continue
-        buf.append(line)
-    if buf:
-        groups.append((None, buf))
 
-    out = []
-    for kind, lines in groups:
-        if kind == "code":
-            out.append(("code", lines))
+        k = classify(line)
+        if k == "hr":
+            flush()
             continue
-        first = lines[0]
-        if HR.match(first):
-            continue
-        if TABLE.match(first):
-            out.append(("table", lines))
-        elif HEADING.match(first):
-            out.append(("heading", lines))
-        elif LISTITEM.match(first):
-            out.append(("list", lines))
-        elif QUOTE.match(first):
-            out.append(("quote", lines))
-        else:
-            out.append(("plain", lines))
+        # heading 은 한 줄이 곧 한 덩어리다. list 는 항목마다 따로 세지만
+        # units() 에서 줄별로 처리하므로 여기서는 묶어 둔다.
+        if k != kind or k == "heading":
+            flush()
+            kind = k
+        buf.append(line)
+
+    flush()
     return out
 
 
