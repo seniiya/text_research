@@ -20,7 +20,7 @@ XLSX 쪽에는 코딩 편의 장치를 넣는다:
   - 헤더 고정, text 열 줄바꿈
   - '코드표' 시트에 코딩북 §4~§6 요약
 
-사용: python scripts/make_coding_sheet.py P01
+사용: python scripts/make_coding_sheet.py P01 [--coder=coder2]
       (XLSX 생성에는 openpyxl 필요. 없으면 CSV만 만든다.)
 """
 
@@ -34,7 +34,12 @@ from split_sentences import split_response  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CHATS = ROOT / "data" / "deid" / "chats"
-OUT_DIR = ROOT / "data" / "coding"
+CODING = ROOT / "data" / "coding"
+
+# 코더마다 폴더를 나눈다. XLSX 는 바이너리라 Git 이 병합하지 못하므로,
+# 두 사람이 같은 파일을 편집하면 한쪽이 반드시 덮어써진다.
+# 또한 코딩북 제2부 15항이 "서로의 결과를 보지 않는다"를 요구한다.
+DEFAULT_CODER = "coder1"
 
 # esconv : ESConv 8전략 라벨. 드롭다운으로 고른다.
 # note   : 판정이 애매했던 이유를 적는 자유기술. 비워도 된다.
@@ -100,7 +105,7 @@ def build_rows(pid):
     return rows
 
 
-def carry_over(pid, rows):
+def carry_over(pid, rows, out_dir):
     """이미 입력된 라벨을 새 시트로 옮긴다.
 
     문장 분리 규칙이 바뀌면 행이 다시 만들어진다. 그때 입력해 둔 라벨이
@@ -108,7 +113,7 @@ def carry_over(pid, rows):
     값을 되돌려 놓는다. text 까지 비교하므로 분리 결과가 달라진 행은
     옮기지 않는다. 잘못된 위치에 라벨이 붙는 것보다 비는 편이 낫다.
     """
-    path = OUT_DIR / f"{pid}.xlsx"
+    path = out_dir / f"{pid}.xlsx"
     if not path.exists():
         return 0, 0
 
@@ -140,8 +145,8 @@ def carry_over(pid, rows):
     return kept, len(old)
 
 
-def write_csv(pid, rows):
-    path = OUT_DIR / f"{pid}.csv"
+def write_csv(pid, rows, out_dir):
+    path = out_dir / f"{pid}.csv"
     with open(path, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=FIELDS)
         w.writeheader()
@@ -149,7 +154,7 @@ def write_csv(pid, rows):
     return path
 
 
-def write_xlsx(pid, rows):
+def write_xlsx(pid, rows, out_dir):
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font, PatternFill, Protection
@@ -265,24 +270,31 @@ def write_xlsx(pid, rows):
     ref.append(["문맥 행(회색, role=Prompt)은 사용자 발화이며 코딩 대상이 아니다."])
     ref.append(["코딩 대상은 role=Response 행뿐이다. (코딩북 §2)"])
 
-    path = OUT_DIR / f"{pid}.xlsx"
+    path = out_dir / f"{pid}.xlsx"
     wb.save(path)
     return path
 
 
 def main():
-    pid = sys.argv[1] if len(sys.argv) > 1 else "P01"
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a.split("=")[0]: a.split("=", 1)[-1]
+             for a in sys.argv[1:] if a.startswith("--")}
+
+    pid = args[0] if args else "P01"
+    coder = flags.get("--coder", DEFAULT_CODER)
+    out_dir = CODING / coder
+
     rows = build_rows(pid)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     n_ctx = sum(1 for r in rows if r["role"] == "Prompt")
     n_code = sum(1 for r in rows if r["role"] == "Response")
 
-    kept, lost = carry_over(pid, rows)
-    csv_path = write_csv(pid, rows)
-    xlsx_path = write_xlsx(pid, rows)
+    kept, lost = carry_over(pid, rows, out_dir)
+    csv_path = write_csv(pid, rows, out_dir)
+    xlsx_path = write_xlsx(pid, rows, out_dir)
 
-    print(f"{pid}: 총 {len(rows)}행 = 문맥 {n_ctx}행 + 코딩 대상 {n_code}행")
+    print(f"[{coder}] {pid}: 총 {len(rows)}행 = 문맥 {n_ctx}행 + 코딩 대상 {n_code}행")
     if kept or lost:
         print(f"  기존 라벨 {kept}건 이어받음"
               + (f" / {lost}건은 해당 문장이 바뀌어 옮기지 못함" if lost else ""))

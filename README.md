@@ -28,15 +28,24 @@ ChatGPT share URL은 **링크만 알면 누구나 열람**할 수 있다. 채팅
 
 ## ✅ 지금 할 일
 
-### 1. 제1부 코딩 — AI 응답 전략 `진행 가능`
+### 1. 제1부 코딩 — AI 응답 전략 `2인 코딩 대기`
 
-`data/coding/P01.xlsx` ~ `P11.xlsx`의 **`esconv` 열**을 채운다. → 기준: [코딩북 제1부](codebook_part1.md)
+`data/coding/<코더>/P##.xlsx`의 **`esconv` 열**을 채운다. → 기준: [코딩북 제1부](codebook_part1.md)
 
-**대상 4254행.** 드롭다운에서 고르면 되고 타이핑은 필요 없다.
+| 코더 | 폴더 | 진행 |
+|---|---|---|
+| coder1 | `data/coding/coder1/` | P01 183행 · P06 123행 완료 |
+| coder2 | `data/coding/coder2/` | **P01·P06 대기** |
+
+**다음 차례는 나머지 9명이 아니라 coder2의 P01·P06이다.** 판정 규칙이 아직
+확정되지 않아서, 지금 9명을 더 코딩하면 규칙이 바뀔 때 전부 다시 해야 한다.
 
 - 회색 행(`role = Prompt`)은 **사용자 발화**다. 잠겨 있고 코딩 대상이 아니다.
   `RST`·`RFL`·`QST`는 사용자가 뭐라고 했는지 봐야 판정되기 때문에 넣어 둔 것이다.
-- 애매하면 **판정 우선순위**(아래 참조)를 위에서부터 적용한다.
+- 애매하면 **판정 우선순위**(아래 참조)를 위에서부터 적용하고, 이유를 `note`에 적는다.
+
+> ⚠️ **coder2 는 coder1 폴더를 열지 않는다.** 코딩북 제2부 15항이 "서로의 결과를
+> 보지 않는다"를 요구한다. 파일 2개와 코딩북만 전달받는 편이 안전하다.
 
 ### 2. 제2부 코딩 — 사용자 측 `형식 미정`
 
@@ -88,7 +97,9 @@ ChatGPT share URL은 **링크만 알면 누구나 열람**할 수 있다. 채팅
 ### 4. 확인 필요
 
 - **`P11`의 `총_턴수`가 비어 있다.** 설문 원본을 확인해야 한다.
-- 2인 코딩 시 시트를 코더별로 복제해야 한다 (제2부 15항, Cohen's κ 목표 0.70).
+- `OTH` 가 P01 에서 30%(7항 진단선)에 도달했다. 조정 회의에서 다룰 사항이다.
+- `SLF` 는 P01 1건 · P06 0건. GPT 는 자기 경험을 공유할 수 없어 구조적으로
+  관찰되기 어렵다. ESConv 원 데이터에서는 약 9.7% 를 차지하는 전략이다.
 
 ---
 
@@ -176,7 +187,9 @@ data/
     chats/P01~P11.json         대화 로그
     survey_analysis.csv        설문 분석표
     index.csv                  P## → source, 제목, 메시지 수
-  coding/                ✅ 코딩 시트 P01~P11 (CSV + XLSX)
+  coding/                ✅ 코딩 시트 (CSV + XLSX)
+    coder1/P01~P11             코더 1
+    coder2/P01~P11             코더 2 — 라벨 비어 있음
   output/                   분석 산출물
 
   raw/                   🔒 원본 대화 (.md / .json, 파일명에 실명)
@@ -209,6 +222,7 @@ codebook_part2.md        사용자 측 (목적·소재·pushback)
 | `text` | 문장 |
 | `chars` | `text`의 글자 수 (공백 포함) |
 | `esconv` | **입력란.** 8코드 중 하나. 문맥 행은 `-` |
+| `note` | **입력란.** 판정이 애매했던 이유. 자유기술 |
 
 XLSX에는 드롭다운·문맥 행 잠금·시트 보호가 걸려 있어 코딩 대상 셀에만 입력된다.
 규칙을 바꾸려면 `[검토] → [시트 보호 해제]`.
@@ -240,7 +254,8 @@ XLSX에는 드롭다운·문맥 행 잠금·시트 보호가 걸려 있어 코�
 
 ```bash
 python scripts/deidentify.py                 # 원자료 → data/deid/
-python scripts/make_coding_sheet.py P01      # → data/coding/P01.csv, P01.xlsx
+python scripts/make_coding_sheet.py P01                 # → data/coding/coder1/
+python scripts/make_coding_sheet.py P01 --coder=coder2  # → data/coding/coder2/
 python scripts/split_sentences.py P01        # 분리 검증 리포트 (파일 안 만듦)
 ```
 
