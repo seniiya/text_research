@@ -22,6 +22,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import markdown_chat  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 SURVEY = ROOT / "data" / "survey"
@@ -85,8 +88,20 @@ def build_mapping(a_header, a_rows):
     return mapping
 
 
+def collect_sources():
+    """참여자별 원본 파일을 고른다. 같은 사람의 .md 와 .json 이 둘 다 있으면
+    .md 를 쓴다. 마크다운은 리스트·제목·인용 구조가 남아 있어 문장 분리가
+    정확하다 (markdown_chat 모듈 설명 참고)."""
+    picked = {}
+    for path in sorted(RAW.glob("*.md")) + sorted(RAW.glob("*.json")):
+        name = path.stem.split("_", 1)[0]
+        if name not in picked:      # .md 를 먼저 순회하므로 .md 가 이긴다
+            picked[name] = path
+    return picked
+
+
 def deid_chats(mapping):
-    """raw JSON을 P## 로 치환해 내보낸다. 파일명 앞부분(실명)으로 매칭한다."""
+    """원본을 P## 로 치환해 내보낸다. 파일명 앞부분(실명)으로 매칭한다."""
     out_dir = DEID / "chats"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -94,8 +109,7 @@ def deid_chats(mapping):
     seen = set()
     warnings = []
 
-    for path in sorted(RAW.glob("*.json")):
-        name = path.stem.split("_", 1)[0]
+    for name, path in sorted(collect_sources().items()):
         if name not in mapping:
             sys.exit(f"[중단] '{path.name}' 의 이름 '{name}' 이 설문 표 A에 없음.")
 
@@ -104,40 +118,77 @@ def deid_chats(mapping):
             sys.exit(f"[중단] {pid} 가 두 번 나옴 ({path.name}).")
         seen.add(pid)
 
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        meta = doc.get("metadata", {})
+        if path.suffix == ".md":
+            doc, inner = _from_markdown(path)
+        else:
+            doc, inner = _from_json(path)
 
-        # 파일명과 JSON 내부 이름이 어긋날 수 있으므로 기록만 남긴다.
-        inner = (meta.get("user") or {}).get("name", "").strip()
+        # 파일명과 파일 안의 이름이 어긋날 수 있으므로 기록만 남긴다.
         if inner and inner != name:
-            warnings.append(f"  {path.name}: 파일명 '{name}' vs JSON 내부 '{inner}'")
+            warnings.append(f"  {path.name}: 파일명 '{name}' vs 파일 내부 '{inner}'")
 
-        meta["user"] = {"name": pid}
-        meta.pop("link", None)          # 공개 share URL 제거
-        meta.pop("powered_by", None)    # 내보내기 도구 광고, 분석과 무관
-        doc["metadata"] = meta
-
+        doc["metadata"]["user"] = {"name": pid}
         (out_dir / f"{pid}.json").write_text(
             json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
         index.append({
             "p_id": pid,
-            "title": meta.get("title", ""),
+            "source": doc["metadata"]["format"],
+            "title": doc["metadata"].get("title", ""),
             "n_messages": len(doc.get("messages", [])),
         })
 
     missing = sorted({v["pid"] for v in mapping.values()} - seen)
     if missing:
-        warnings.append(f"  raw JSON 없는 참여자: {', '.join(missing)}")
+        warnings.append(f"  원본 없는 참여자: {', '.join(missing)}")
+
+    plain = sorted(r["p_id"] for r in index if r["source"] != "markdown")
+    if plain:
+        warnings.append(
+            f"  마크다운이 없어 문단 단위로만 분리되는 참여자: {', '.join(plain)}\n"
+            f"    -> 같은 대화를 .md 로 내보내 data/raw/ 에 넣으면 구조 기반으로 분리된다."
+        )
 
     index.sort(key=lambda r: r["p_id"])
     with open(DEID / "index.csv", "w", encoding="utf-8", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=["p_id", "title", "n_messages"])
+        w = csv.DictWriter(fh, fieldnames=["p_id", "source", "title", "n_messages"])
         w.writeheader()
         w.writerows(index)
 
     return index, warnings
+
+
+def _from_json(path):
+    """JSON 내보내기. 마크다운 구조가 없어 문단 단위로만 나뉜다."""
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    meta = doc.get("metadata", {})
+    inner = (meta.get("user") or {}).get("name", "").strip()
+    meta.pop("link", None)          # 공개 share URL 제거
+    meta.pop("powered_by", None)    # 내보내기 도구 광고, 분석과 무관
+    meta["format"] = "plain"
+    doc["metadata"] = meta
+    return doc, inner
+
+
+def _from_markdown(path):
+    """마크다운 내보내기. say 에 구조 표시(- ## > |)를 살려 둔다."""
+    meta_raw, msgs = markdown_chat.parse(path.read_text(encoding="utf-8"))
+    inner = meta_raw.get("user", "").strip()
+
+    for m in msgs:
+        m["say"] = markdown_chat.sanitize(m["say"])
+
+    doc = {
+        "metadata": {
+            "title": meta_raw.get("title", ""),
+            "user": {},
+            "dates": {k: meta_raw.get(k, "") for k in ("created", "updated", "exported")},
+            "format": "markdown",
+        },
+        "messages": msgs,
+    }
+    return doc, inner
 
 
 def write_survey_analysis(b_header, b_rows):
@@ -161,12 +212,16 @@ def write_mapping(mapping):
 def verify(mapping):
     """출력물 전체를 훑어 잔존 식별정보를 찾는다."""
     names = set(mapping)
-    # JSON 내부 표기가 파일명과 다른 경우까지 잡는다.
+    # 파일 내부 표기가 파일명과 다른 경우까지 잡는다.
     for path in RAW.glob("*.json"):
         doc = json.loads(path.read_text(encoding="utf-8"))
         inner = ((doc.get("metadata") or {}).get("user") or {}).get("name", "").strip()
         if inner:
             names.add(inner)
+    for path in RAW.glob("*.md"):
+        meta, _ = markdown_chat.parse(path.read_text(encoding="utf-8"))
+        if meta.get("user"):
+            names.add(meta["user"].strip())
 
     problems = []
     for path in sorted(DEID.rglob("*")):
