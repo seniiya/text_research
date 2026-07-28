@@ -13,7 +13,7 @@
 
 | 경로 | 상태 | 내용 |
 |---|---|---|
-| `data/raw/` `data/survey/` `data/private/` | 🔒 **Git 제외** | 실명, ChatGPT 공개 share URL, 가명–실명 연결키 |
+| `data/raw/` `data/survey/` `data/private/` | 🔒 **Git 제외** | 구글 스프레드시트 공유 |
 | `data/deid/` `data/coding/` | ✅ 공유 대상 | 가명화 완료 |
 
 ChatGPT share URL은 **링크만 알면 누구나 열람**할 수 있다. 채팅에도 붙여넣지 않는다.

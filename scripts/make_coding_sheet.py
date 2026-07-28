@@ -36,9 +36,13 @@ ROOT = Path(__file__).resolve().parent.parent
 CHATS = ROOT / "data" / "deid" / "chats"
 OUT_DIR = ROOT / "data" / "coding"
 
-# esconv : ESConv 8전략 라벨. Response 행에만 입력한다. 문맥 행은 '-' 로 잠근다.
-FIELDS = ["p_id", "turn", "sent_no", "role", "text", "chars", "esconv"]
-LABEL_FIELDS = ["esconv"]
+# esconv : ESConv 8전략 라벨. 드롭다운으로 고른다.
+# note   : 판정이 애매했던 이유를 적는 자유기술. 비워도 된다.
+#          체계가 데이터에 맞는지 진단할 때(3항 7항) 근거 자료가 된다.
+# 둘 다 Response 행에만 입력한다. 문맥 행은 '-' 로 잠근다.
+FIELDS = ["p_id", "turn", "sent_no", "role", "text", "chars", "esconv", "note"]
+LABEL_FIELDS = ["esconv", "note"]
+DROPDOWN_FIELDS = ["esconv"]        # note 는 자유기술이라 목록을 걸지 않는다
 
 CODES = [
     ("QST", "질문", "사용자에게 정보나 감정을 되묻는 발화", "탐색"),
@@ -84,16 +88,56 @@ def build_rows(pid):
             ctx = flatten(pending)
             rows.append({
                 "p_id": pid, "turn": turn, "sent_no": "-", "role": "Prompt",
-                "text": ctx, "chars": len(ctx), "esconv": "-",
+                "text": ctx, "chars": len(ctx), "esconv": "-", "note": "-",
             })
             pending = None
 
         for n, s in enumerate(split_response(msg["say"], markdown=is_md), start=1):
             rows.append({
                 "p_id": pid, "turn": turn, "sent_no": n, "role": "Response",
-                "text": s, "chars": len(s), "esconv": "",
+                "text": s, "chars": len(s), "esconv": "", "note": "",
             })
     return rows
+
+
+def carry_over(pid, rows):
+    """이미 입력된 라벨을 새 시트로 옮긴다.
+
+    문장 분리 규칙이 바뀌면 행이 다시 만들어진다. 그때 입력해 둔 라벨이
+    사라지지 않도록, 기존 XLSX 를 읽어 (turn, sent_no, text) 가 같은 행에
+    값을 되돌려 놓는다. text 까지 비교하므로 분리 결과가 달라진 행은
+    옮기지 않는다. 잘못된 위치에 라벨이 붙는 것보다 비는 편이 낫다.
+    """
+    path = OUT_DIR / f"{pid}.xlsx"
+    if not path.exists():
+        return 0, 0
+
+    try:
+        from openpyxl import load_workbook
+    except ModuleNotFoundError:
+        return 0, 0
+
+    ws = load_workbook(path)["coding"]
+    header = [c.value for c in ws[1]]
+    old = {}
+    for r in range(2, ws.max_row + 1):
+        row = {h: ws.cell(row=r, column=i).value
+               for i, h in enumerate(header, start=1) if h}
+        if row.get("role") != "Response":
+            continue
+        vals = {f: row.get(f) for f in LABEL_FIELDS if row.get(f)}
+        if vals:
+            old[(str(row.get("turn")), str(row.get("sent_no")), row.get("text"))] = vals
+
+    kept = 0
+    for r in rows:
+        if r["role"] != "Response":
+            continue
+        vals = old.pop((str(r["turn"]), str(r["sent_no"]), r["text"]), None)
+        if vals:
+            r.update(vals)
+            kept += 1
+    return kept, len(old)
 
 
 def write_csv(pid, rows):
@@ -134,7 +178,7 @@ def write_xlsx(pid, rows):
         ws.append([r[f] for f in FIELDS])
 
     widths = {"p_id": 7, "turn": 6, "sent_no": 8, "role": 10,
-              "text": 80, "chars": 7, "esconv": 10}
+              "text": 72, "chars": 7, "esconv": 10, "note": 30}
     for i, f in enumerate(FIELDS, start=1):
         ws.column_dimensions[get_column_letter(i)].width = widths[f]
 
@@ -169,6 +213,8 @@ def write_xlsx(pid, rows):
 
     last = len(rows) + 1
     for field, col in zip(LABEL_FIELDS, label_cols):
+        if field not in DROPDOWN_FIELDS:
+            continue
         dv = DataValidation(
             type="list",
             formula1='"' + ",".join(c[0] for c in CODES) + '"',
@@ -232,10 +278,14 @@ def main():
     n_ctx = sum(1 for r in rows if r["role"] == "Prompt")
     n_code = sum(1 for r in rows if r["role"] == "Response")
 
+    kept, lost = carry_over(pid, rows)
     csv_path = write_csv(pid, rows)
     xlsx_path = write_xlsx(pid, rows)
 
     print(f"{pid}: 총 {len(rows)}행 = 문맥 {n_ctx}행 + 코딩 대상 {n_code}행")
+    if kept or lost:
+        print(f"  기존 라벨 {kept}건 이어받음"
+              + (f" / {lost}건은 해당 문장이 바뀌어 옮기지 못함" if lost else ""))
     print(f"  CSV : {csv_path.relative_to(ROOT).as_posix()}")
     if xlsx_path:
         print(f"  XLSX: {xlsx_path.relative_to(ROOT).as_posix()}  (드롭다운·시트보호 적용)")
