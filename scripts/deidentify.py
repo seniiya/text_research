@@ -32,6 +32,48 @@ DEID = ROOT / "data" / "deid"
 PRIVATE = ROOT / "data" / "private"
 
 SURVEY_CSV = "AI 채팅 기록 공유 접수(응답) - 설문지 응답 시트1.csv"
+SURVEY_CSV_NEW = "AI 채팅 기록 공유 접수(응답) - 설문지 응답 시트1 (1).csv"
+
+# 2차 모집은 폼을 새로 만들어 열 구성이 다르다. 접수 순서대로 P12 부터 붙인다.
+NEW_PID_START = 12
+
+# 새 폼 열 번호 -> 분석표 열 이름.
+# 감정 문항은 제목이 두 번씩 같아서 번호로만 구분된다.
+#   M(12) P(15) T(19) = Valence,  N(13) Q(16) U(20) = Arousal
+NEW_COLS = {
+    "나이": 3, "MBTI": 5, "성별": 6,
+    "사용빈도": 7, "평소_대화주제": 8, "평소_감정상태": 9,
+    "요금제": 10, "모델": 11,
+    "전_V": 12, "전_A": 13, "전_감정단어": 14,
+    "후_V": 15, "후_A": 16, "후_감정단어": 17,
+    "주제1": 18, "주제1_V": 19, "주제1_A": 20, "주제1_감정단어": 21,
+    "주제2": 23,
+}
+NEW_NAME_COL = 2
+
+# 무료 요금제에서 쓸 수 있는 모델은 하나뿐이다.
+FREE_TIER_MODEL = "gpt5.5"
+
+# 응답 자체에 문제가 있어 연구자가 바로잡은 내역. 설문 원본은 건드리지 않고
+# 여기에만 적어, 무엇을 왜 고쳤는지 남긴다.
+CORRECTIONS = {
+    # 단일 선택 문항인데 두 개를 골랐다. 연구자 판단으로 주1-2 로 확정.
+    "P16": {"사용빈도": "주1-2"},
+}
+
+# 다른 열에 잘못 적힌 응답을 옮긴다. (p_id, 원래 열, 옮길 열)
+# P19 는 '두 번째로 오래 다룬 주제' 칸에 주제가 아니라 대화 소감을 적었다.
+MOVES = [("P19", "주제2", "첨언")]
+
+# 표기 통일. 같은 선택지가 폼마다 다르게 적혀 있어 그대로 두면 집계에서 갈라진다.
+NORMALIZE = {
+    "성별": {"여성": "F", "남성": "M"},
+    "요금제": {"무료 버전": "무료", "유료(Plus 등)": "유료"},
+    "사용빈도": {
+        "거의 매일": "거의매일", "거의 사용 안 함": "거의사용안함",
+        "월 1~3회": "월1-3", "주 1~2회": "주1-2", "주 3~5회": "주3-5",
+    },
+}
 
 # 표 A는 0행이 헤더, 1행부터 응답. 빈 행을 만나면 끝.
 # 표 B는 p_id 를 첫 칸으로 갖는 헤더 행에서 시작.
@@ -64,7 +106,45 @@ def read_survey():
     return (a_header, a_rows), (b_header, b_rows)
 
 
-def build_mapping(a_header, a_rows):
+def read_new_survey():
+    """2차 폼. 헤더 1줄 + 응답. 접수 순서를 그대로 P12~ 로 쓴다."""
+    path = SURVEY / SURVEY_CSV_NEW
+    if not path.exists():
+        return []
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        rows = list(csv.reader(fh))
+    return [r for r in rows[1:] if len(r) > NEW_NAME_COL and r[NEW_NAME_COL].strip()]
+
+
+def tidy(field, value):
+    """표기 통일. 규칙에 없으면 공백만 정리해 그대로 둔다."""
+    v = value.strip()
+    if field in NORMALIZE:
+        return NORMALIZE[field].get(v, v)
+    if field == "MBTI":
+        return v.upper()
+    if field in ("평소_대화주제", "평소_감정상태"):
+        # '정보 검색 · 질문' -> '정보 검색·질문' (1차 폼 표기에 맞춘다)
+        return re.sub(r"\s*·\s*", "·", v)
+    return v
+
+
+def new_rows_as_analysis(new_rows, b_header):
+    """2차 폼 응답을 1차 분석표(표 B) 열 구성으로 변환한다."""
+    out = []
+    for i, r in enumerate(new_rows):
+        pid = f"P{NEW_PID_START + i:02d}"
+        rec = {"p_id": pid}
+        for field, col in NEW_COLS.items():
+            rec[field] = tidy(field, r[col] if col < len(r) else "")
+        # 2차 폼은 주제2 의 V·A·감정단어와 첨언을 묻지 않는다. 총_턴수는 로그에서 센다.
+        for field in ("주제2_V", "주제2_A", "주제2_감정단어", "첨언", "총_턴수"):
+            rec.setdefault(field, "")
+        out.append([rec.get(h, "") for h in b_header])
+    return out
+
+
+def build_mapping(a_header, a_rows, new_rows=()):
     """실명 -> P## 매핑. 표 A의 '실험자 번호'를 그대로 쓴다."""
     name_i = a_header.index("사용자 이름")
     num_i = a_header.index("실험자 번호")
@@ -80,6 +160,16 @@ def build_mapping(a_header, a_rows):
 
     if len(mapping) != len(a_rows):
         sys.exit(f"[중단] 표 A {len(a_rows)}행 중 {len(mapping)}행만 매핑됨. 빈 이름/번호 확인 필요.")
+
+    for i, r in enumerate(new_rows):
+        name = r[NEW_NAME_COL].strip()
+        if name in mapping:
+            sys.exit(f"[중단] '{name}' 이 1차와 2차 설문에 모두 있음.")
+        link_col = 4        # 2차 폼의 '공유할 ChatGPT 채팅 링크'
+        mapping[name] = {
+            "pid": f"P{NEW_PID_START + i:02d}",
+            "link": r[link_col].strip() if link_col < len(r) else "",
+        }
 
     pids = [v["pid"] for v in mapping.values()]
     if len(set(pids)) != len(pids):
@@ -191,12 +281,64 @@ def _from_markdown(path):
     return doc, inner
 
 
-def write_survey_analysis(b_header, b_rows):
-    """표 B는 이미 p_id 기준이므로 그대로 내보낸다."""
+def write_survey_analysis(b_header, b_rows, new_rows, turns):
+    """1차 표 B(이미 p_id 기준) 뒤에 2차 폼 변환분을 붙인다.
+
+    총_턴수는 설문이 아니라 대화 로그에서 센다. 1차 응답 중 비어 있던 값도
+    이때 채워진다.
+    """
+    rows = [list(r) for r in b_rows] + new_rows_as_analysis(new_rows, b_header)
+
+    pid_at = b_header.index("p_id")
+    applied = []
+
+    for pid, target, dest in MOVES:
+        for r in rows:
+            if r[pid_at] != pid:
+                continue
+            src_i, dst_i = b_header.index(target), b_header.index(dest)
+            val = r[src_i].strip()
+            if val:
+                r[dst_i] = (r[dst_i].strip() + " " + val).strip()
+                r[src_i] = ""
+                applied.append(f"{pid} {target}->{dest}")
+
+    for pid, fields in CORRECTIONS.items():
+        for r in rows:
+            if r[pid_at] != pid:
+                continue
+            for field, value in fields.items():
+                i = b_header.index(field)
+                if r[i].strip() != value:
+                    applied.append(f"{pid} {field} {r[i]!r}->{value!r}")
+                    r[i] = value
+
+    # 무료 요금제는 선택할 수 있는 모델이 하나뿐이다. 2차 폼의 모델 문항이
+    # 자유입력이라 '.', 'ㅁㄴㅇ', '모름' 같은 값이 들어왔는데, 요금제로부터
+    # 확정할 수 있으므로 채운다. 유료는 모델이 여러 개라 추론하지 않는다.
+    plan_i = b_header.index("요금제")
+    model_i = b_header.index("모델")
+    fixed_model = []
+    for r in rows:
+        if r[plan_i].strip() == "무료" and r[model_i].strip() != FREE_TIER_MODEL:
+            fixed_model.append(f"{r[b_header.index('p_id')]} {r[model_i]!r}")
+            r[model_i] = FREE_TIER_MODEL
+
+    pid_i = b_header.index("p_id")
+    turn_i = b_header.index("총_턴수")
+    filled = []
+    for r in rows:
+        n = turns.get(r[pid_i])
+        if n and str(r[turn_i]).strip() != str(n):
+            if str(r[turn_i]).strip():
+                filled.append(f"{r[pid_i]} {r[turn_i]}->{n}")
+            r[turn_i] = n
+
+    rows.sort(key=lambda r: r[pid_i])
     DEID.mkdir(parents=True, exist_ok=True)
     with open(DEID / "survey_analysis.csv", "w", encoding="utf-8", newline="") as fh:
-        csv.writer(fh).writerows([b_header] + b_rows)
-    return len(b_rows)
+        csv.writer(fh).writerows([b_header] + rows)
+    return len(rows), filled, fixed_model, applied
 
 
 def write_mapping(mapping):
@@ -240,15 +382,25 @@ def verify(mapping):
 
 def main():
     (a_header, a_rows), (b_header, b_rows) = read_survey()
-    mapping = build_mapping(a_header, a_rows)
-    print(f"설문 표 A: {len(a_rows)}명 접수 / 표 B: {len(b_rows)}행 분석표")
+    new_rows = read_new_survey()
+    mapping = build_mapping(a_header, a_rows, new_rows)
+    print(f"설문 1차: 표 A {len(a_rows)}명 / 표 B {len(b_rows)}행"
+          f" | 2차 폼: {len(new_rows)}명")
 
     index, warnings = deid_chats(mapping)
-    n_survey = write_survey_analysis(b_header, b_rows)
+    turns = {r["p_id"]: r["n_messages"] // 2 for r in index}
+    n_survey, filled, fixed_model, applied = write_survey_analysis(
+        b_header, b_rows, new_rows, turns)
     write_mapping(mapping)
 
     print(f"가명화 대화 {len(index)}건 -> data/deid/chats/")
     print(f"분석표 {n_survey}행 -> data/deid/survey_analysis.csv")
+    if filled:
+        print(f"  총_턴수 로그 기준으로 정정: {', '.join(filled)}")
+    if fixed_model:
+        print(f"  무료 요금제 모델을 {FREE_TIER_MODEL} 로 확정: {', '.join(fixed_model)}")
+    if applied:
+        print(f"  연구자 정정 적용: {', '.join(applied)}")
     print(f"연결키 {len(mapping)}행 -> data/private/mapping.csv  (커밋 금지)")
 
     if warnings:

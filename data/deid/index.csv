@@ -1,12 +1,20 @@
 p_id,source,title,n_messages
 P01,markdown,배 나오고 걱정돼,22
 P02,markdown,대학원 분야 추천,24
-P03,plain,스트레스 해소 방법,22
-P04,plain,안녕 지피티야,48
-P05,plain,인사 나누기,32
+P03,markdown,스트레스 해소 방법,22
+P04,markdown,안녕 지피티야,48
+P05,markdown,인사 나누기,32
 P06,markdown,강릉 버스 교통 상황,12
 P07,markdown,수면 개선 팁,20
 P08,markdown,서브스턴스 페인터 금속 패임,22
-P09,plain,스파이더맨 개봉 기대,28
-P10,plain,울산 강아지 동반 카페,30
-P11,plain,2주 3kg 감량 계획,20
+P09,markdown,스파이더맨 개봉 기대,28
+P10,markdown,울산 강아지 동반 카페,30
+P11,markdown,2주 3kg 감량 계획,20
+P12,markdown,자기소개서 작성 도움,104
+P13,markdown,반도체 공산품 분류,34
+P14,markdown,퇴사 고민 털어놓기,18
+P15,markdown,콘치즈 대체법 추천,14
+P16,markdown,민달팽이 나무에 놓기,8
+P17,markdown,AMD 그래픽 드라이버 문제,2
+P18,markdown,방화구획 제14조 위반 여부,14
+P19,markdown,8월 스케줄 계획,22
