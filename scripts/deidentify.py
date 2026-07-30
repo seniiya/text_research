@@ -86,6 +86,12 @@ PII_PATTERNS = {
     "주민등록번호": r"\d{6}-\d{7}",
 }
 
+# 대화 본문에 남은 실명을 이걸로 바꾼다. sanitize() 의 [이미지]·[링크] 와 같은 표기.
+NAME_PLACEHOLDER = "[이름]"
+
+# 이름은 한 글자면 흔한 낱말과 겹친다('이', '수'...). 두 글자부터만 지운다.
+MIN_NAME_LEN = 2
+
 
 def read_survey():
     """설문 CSV를 표 A(접수)와 표 B(분석)로 분리한다."""
@@ -190,6 +196,45 @@ def collect_sources():
     return picked
 
 
+def name_tokens(mapping):
+    """지워야 할 실명 표기를 모은다. 긴 것부터 지우도록 정렬한다.
+
+    참여자는 대화 중 자기 이름을 말하고, GPT는 그 이름을 그대로 불러 준다.
+    이때 성을 뗀 이름만 쓰는 일이 훨씬 잦다("길동이는 22살이지만").
+    풀네임만 지우면 이쪽이 그대로 남으므로 둘 다 지운다. '홍길동' 을 먼저
+    지워야 '홍[이름]' 이 되지 않는다.
+    """
+    tokens = set()
+    for name in mapping:
+        name = name.strip()
+        if len(name) >= MIN_NAME_LEN:
+            tokens.add(name)
+        given = name[1:]            # 성 한 글자를 뗀 이름
+        if len(given) >= MIN_NAME_LEN:
+            tokens.add(given)
+    return sorted(tokens, key=len, reverse=True)
+
+
+def scrub_names(text, tokens):
+    for t in tokens:
+        text = text.replace(t, NAME_PLACEHOLDER)
+    return text
+
+
+def scrub_doc(doc, tokens):
+    """제목과 발화 본문에서 실명을 지운다.
+
+    모든 참여자의 이름을 모든 파일에서 지운다. 대화에 등장하는 제3자가
+    다른 참여자와 동명이인일 수 있고, 그 경우에도 실명인 것은 같다.
+    """
+    meta = doc.get("metadata", {})
+    if meta.get("title"):
+        meta["title"] = scrub_names(meta["title"], tokens)
+    for m in doc.get("messages", []):
+        m["say"] = scrub_names(m.get("say", ""), tokens)
+    return doc
+
+
 def deid_chats(mapping):
     """원본을 P## 로 치환해 내보낸다. 파일명 앞부분(실명)으로 매칭한다."""
     out_dir = DEID / "chats"
@@ -198,6 +243,8 @@ def deid_chats(mapping):
     index = []
     seen = set()
     warnings = []
+    tokens = name_tokens(mapping)
+    scrubbed = []
 
     for name, path in sorted(collect_sources().items()):
         if name not in mapping:
@@ -218,6 +265,13 @@ def deid_chats(mapping):
             warnings.append(f"  {path.name}: 파일명 '{name}' vs 파일 내부 '{inner}'")
 
         doc["metadata"]["user"] = {"name": pid}
+
+        before = json.dumps(doc, ensure_ascii=False).count(NAME_PLACEHOLDER)
+        doc = scrub_doc(doc, tokens)
+        added = json.dumps(doc, ensure_ascii=False).count(NAME_PLACEHOLDER) - before
+        if added:
+            scrubbed.append(f"{pid} {added}회")
+
         (out_dir / f"{pid}.json").write_text(
             json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -246,7 +300,7 @@ def deid_chats(mapping):
         w.writeheader()
         w.writerows(index)
 
-    return index, warnings
+    return index, warnings, scrubbed
 
 
 def _from_json(path):
@@ -365,15 +419,18 @@ def verify(mapping):
         if meta.get("user"):
             names.add(meta["user"].strip())
 
+    # 성을 뗀 이름까지 본다. 대화에서는 이쪽이 훨씬 자주 불린다.
+    tokens = name_tokens({n: None for n in names})
+
     problems = []
     for path in sorted(DEID.rglob("*")):
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(ROOT)
-        for n in sorted(names):
+        for n in tokens:
             if n in text:
-                problems.append(f"{rel}: 실명 '{n}'")
+                problems.append(f"{rel}: 실명 '{n}' {text.count(n)}회")
         for label, pat in PII_PATTERNS.items():
             for m in re.findall(pat, text):
                 problems.append(f"{rel}: {label} '{m}'")
@@ -387,13 +444,15 @@ def main():
     print(f"설문 1차: 표 A {len(a_rows)}명 / 표 B {len(b_rows)}행"
           f" | 2차 폼: {len(new_rows)}명")
 
-    index, warnings = deid_chats(mapping)
+    index, warnings, scrubbed = deid_chats(mapping)
     turns = {r["p_id"]: r["n_messages"] // 2 for r in index}
     n_survey, filled, fixed_model, applied = write_survey_analysis(
         b_header, b_rows, new_rows, turns)
     write_mapping(mapping)
 
     print(f"가명화 대화 {len(index)}건 -> data/deid/chats/")
+    if scrubbed:
+        print(f"  본문 실명을 {NAME_PLACEHOLDER} 로 치환: {', '.join(scrubbed)}")
     print(f"분석표 {n_survey}행 -> data/deid/survey_analysis.csv")
     if filled:
         print(f"  총_턴수 로그 기준으로 정정: {', '.join(filled)}")
