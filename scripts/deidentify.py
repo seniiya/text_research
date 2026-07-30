@@ -56,9 +56,19 @@ FREE_TIER_MODEL = "gpt5.5"
 
 # 응답 자체에 문제가 있어 연구자가 바로잡은 내역. 설문 원본은 건드리지 않고
 # 여기에만 적어, 무엇을 왜 고쳤는지 남긴다.
+# 감정단어는 자유기술이라 "감정이 없다"는 뜻을 저마다 다르게 쓴다. 그대로 두면
+# 같은 상태가 6가지 낱말로 갈라져 집계가 안 된다. 연구자가 무감정으로 통일한 건.
+# 자유기술이라 자동 규칙(NORMALIZE)으로 돌리지 않는다. 새 응답이 들어올 때마다
+# 사람이 보고 여기에 적는다.
 CORRECTIONS = {
     # 단일 선택 문항인데 두 개를 골랐다. 연구자 판단으로 주1-2 로 확정.
-    "P16": {"사용빈도": "주1-2"},
+    "P12": {"전_감정단어": "무감정"},                             # '무념무상'
+    "P13": {"전_감정단어": "무감정"},                             # '무난'
+    "P14": {"전_감정단어": "무감정", "후_감정단어": "무감정"},      # '무'
+    "P16": {"사용빈도": "주1-2",
+            "전_감정단어": "무감정", "후_감정단어": "무감정"},      # '그냥 그럼'
+    "P18": {"전_감정단어": "무감정", "후_감정단어": "무감정"},      # '졸림'
+    "P19": {"전_감정단어": "무감정"},                             # '특별한 감정 없음'
 }
 
 # 다른 열에 잘못 적힌 응답을 옮긴다. (p_id, 원래 열, 옮길 열)
@@ -335,6 +345,40 @@ def _from_markdown(path):
     return doc, inner
 
 
+def unexplained_edits(b_header, rows, explained):
+    """덮어쓰기 직전에, 스크립트가 설명할 수 없는 차이를 찾는다.
+
+    이 스크립트는 분석표를 덧붙이지 않고 매번 통째로 다시 만든다. 그래서
+    data/deid/survey_analysis.csv 를 손으로 고치면 다음 실행에서 조용히
+    사라진다. 실제로 감정단어 정정 9건을 그렇게 잃은 적이 있다.
+
+    스크립트가 의도적으로 바꾼 셀(explained)은 빼고 보고한다. 남는 것은
+    '누군가 손으로 고쳤지만 CORRECTIONS 에 적히지 않은 값'뿐이다.
+    """
+    path = DEID / "survey_analysis.csv"
+    if not path.exists():
+        return []
+    with open(path, encoding="utf-8", newline="") as fh:
+        old = list(csv.reader(fh))
+    if not old or old[0] != b_header:
+        return []      # 열 구성이 바뀌었으면 비교가 의미 없다
+
+    pid_i = b_header.index("p_id")
+    prev = {r[pid_i]: r for r in old[1:] if r}
+
+    lost = []
+    for r in rows:
+        o = prev.get(r[pid_i])
+        if not o or len(o) != len(r):
+            continue
+        for i, col in enumerate(b_header):
+            if (r[pid_i], col) in explained:
+                continue
+            if o[i].strip() != r[i].strip():
+                lost.append(f"{r[pid_i]} {col}: {o[i]!r} -> {r[i]!r}")
+    return lost
+
+
 def write_survey_analysis(b_header, b_rows, new_rows, turns):
     """1차 표 B(이미 p_id 기준) 뒤에 2차 폼 변환분을 붙인다.
 
@@ -345,6 +389,7 @@ def write_survey_analysis(b_header, b_rows, new_rows, turns):
 
     pid_at = b_header.index("p_id")
     applied = []
+    explained = set()       # 스크립트가 일부러 바꾼 (p_id, 열)
 
     for pid, target, dest in MOVES:
         for r in rows:
@@ -356,6 +401,7 @@ def write_survey_analysis(b_header, b_rows, new_rows, turns):
                 r[dst_i] = (r[dst_i].strip() + " " + val).strip()
                 r[src_i] = ""
                 applied.append(f"{pid} {target}->{dest}")
+                explained |= {(pid, target), (pid, dest)}
 
     for pid, fields in CORRECTIONS.items():
         for r in rows:
@@ -363,6 +409,7 @@ def write_survey_analysis(b_header, b_rows, new_rows, turns):
                 continue
             for field, value in fields.items():
                 i = b_header.index(field)
+                explained.add((pid, field))
                 if r[i].strip() != value:
                     applied.append(f"{pid} {field} {r[i]!r}->{value!r}")
                     r[i] = value
@@ -377,6 +424,7 @@ def write_survey_analysis(b_header, b_rows, new_rows, turns):
         if r[plan_i].strip() == "무료" and r[model_i].strip() != FREE_TIER_MODEL:
             fixed_model.append(f"{r[b_header.index('p_id')]} {r[model_i]!r}")
             r[model_i] = FREE_TIER_MODEL
+            explained.add((r[pid_at], "모델"))
 
     pid_i = b_header.index("p_id")
     turn_i = b_header.index("총_턴수")
@@ -387,12 +435,17 @@ def write_survey_analysis(b_header, b_rows, new_rows, turns):
             if str(r[turn_i]).strip():
                 filled.append(f"{r[pid_i]} {r[turn_i]}->{n}")
             r[turn_i] = n
+            explained.add((r[pid_i], "총_턴수"))
 
     rows.sort(key=lambda r: r[pid_i])
+
+    # 덮어쓰기 전에 본다. 여기 뭔가 잡히면 손으로 고친 값이 사라진다는 뜻이다.
+    lost = unexplained_edits(b_header, rows, explained)
+
     DEID.mkdir(parents=True, exist_ok=True)
     with open(DEID / "survey_analysis.csv", "w", encoding="utf-8", newline="") as fh:
         csv.writer(fh).writerows([b_header] + rows)
-    return len(rows), filled, fixed_model, applied
+    return len(rows), filled, fixed_model, applied, lost
 
 
 def write_mapping(mapping):
@@ -446,7 +499,7 @@ def main():
 
     index, warnings, scrubbed = deid_chats(mapping)
     turns = {r["p_id"]: r["n_messages"] // 2 for r in index}
-    n_survey, filled, fixed_model, applied = write_survey_analysis(
+    n_survey, filled, fixed_model, applied, lost = write_survey_analysis(
         b_header, b_rows, new_rows, turns)
     write_mapping(mapping)
 
@@ -461,6 +514,12 @@ def main():
     if applied:
         print(f"  연구자 정정 적용: {', '.join(applied)}")
     print(f"연결키 {len(mapping)}행 -> data/private/mapping.csv  (커밋 금지)")
+
+    if lost:
+        print(f"\n[경고] 분석표를 손으로 고친 값 {len(lost)}건을 덮어썼다."
+              f" 유지하려면 CORRECTIONS 에 적어야 한다:")
+        for x in lost:
+            print("  " + x)
 
     if warnings:
         print("\n[확인 필요]")
