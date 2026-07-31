@@ -244,6 +244,9 @@ scripts/
 
 codebook_part1.md        AI 응답 전략 (ESConv 8)
 codebook_part2.md        사용자 측 (목적·소재·pushback)
+
+notes/
+  observations.md           여러 턴에 걸친 질적 관찰 (등급·상태 표기 필수)
 ```
 
 ---
