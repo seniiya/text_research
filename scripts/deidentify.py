@@ -37,6 +37,14 @@ SURVEY_CSV_NEW = "AI 채팅 기록 공유 접수(응답) - 설문지 응답 시�
 # 2차 모집은 폼을 새로 만들어 열 구성이 다르다. 접수 순서대로 P12 부터 붙인다.
 NEW_PID_START = 12
 
+# 연구에서 제외한 응답. 접수 시각으로 지목한다 (실명을 스크립트에 남기지 않는다).
+# p_id 를 붙이기 전에 걸러내므로, 뒤 응답의 번호가 앞으로 당겨져 빈 번호가 생기지 않는다.
+EXCLUDED = {
+    # 대화 로그를 쓰지 않기로 함. 설문만 있고 채팅 원본이 제출되지 않았다.
+    "2026. 7. 30 오전 10:42:28": "대화 로그 미제출",
+}
+NEW_TIMESTAMP_COL = 0
+
 # 새 폼 열 번호 -> 분석표 열 이름.
 # 감정 문항은 제목이 두 번씩 같아서 번호로만 구분된다.
 #   M(12) P(15) T(19) = Valence,  N(13) Q(16) U(20) = Arousal
@@ -75,10 +83,9 @@ CORRECTIONS = {
             "전_감정단어": "무감정", "후_감정단어": "무감정"},      # '그냥 그럼'
     "P18": {"전_감정단어": "무감정", "후_감정단어": "무감정"},      # '졸림'
     "P19": {"전_감정단어": "무감정"},                             # '특별한 감정 없음'
-    "P20": {"전_감정단어": "무감정"},                             # '평범'
     # 유료라 무료 요금제 자동 확정 규칙이 안 걸린다. 같은 모델을 다르게 적은
     # 것뿐이라 표기만 맞춘다. 요금제로 모델을 추론한 것이 아니다.
-    "P21": {"모델": "gpt5.5"},                                    # 'Chat GPT 5.5'
+    "P20": {"모델": "gpt5.5"},                                    # 'Chat GPT 5.5'
 }
 
 # 다른 열에 잘못 적힌 응답을 옮긴다. (p_id, 원래 열, 옮길 열)
@@ -133,13 +140,26 @@ def read_survey():
 
 
 def read_new_survey():
-    """2차 폼. 헤더 1줄 + 응답. 접수 순서를 그대로 P12~ 로 쓴다."""
+    """2차 폼. 헤더 1줄 + 응답. 접수 순서를 그대로 P12~ 로 쓴다.
+
+    EXCLUDED 는 여기서 걸러낸다. p_id 부여 전에 빼야 번호가 이어진다.
+    """
     path = SURVEY / SURVEY_CSV_NEW
     if not path.exists():
-        return []
+        return [], []
     with open(path, encoding="utf-8-sig", newline="") as fh:
         rows = list(csv.reader(fh))
-    return [r for r in rows[1:] if len(r) > NEW_NAME_COL and r[NEW_NAME_COL].strip()]
+
+    kept, dropped = [], []
+    for r in rows[1:]:
+        if len(r) <= NEW_NAME_COL or not r[NEW_NAME_COL].strip():
+            continue
+        stamp = r[NEW_TIMESTAMP_COL].strip()
+        if stamp in EXCLUDED:
+            dropped.append(f"{stamp} ({EXCLUDED[stamp]})")
+        else:
+            kept.append(r)
+    return kept, dropped
 
 
 def tidy(field, value):
@@ -502,10 +522,12 @@ def verify(mapping):
 
 def main():
     (a_header, a_rows), (b_header, b_rows) = read_survey()
-    new_rows = read_new_survey()
+    new_rows, dropped = read_new_survey()
     mapping = build_mapping(a_header, a_rows, new_rows)
     print(f"설문 1차: 표 A {len(a_rows)}명 / 표 B {len(b_rows)}행"
           f" | 2차 폼: {len(new_rows)}명")
+    if dropped:
+        print(f"  연구에서 제외: {', '.join(dropped)}")
 
     index, warnings, scrubbed = deid_chats(mapping)
     turns = {r["p_id"]: r["n_messages"] // 2 for r in index}
