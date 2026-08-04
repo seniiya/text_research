@@ -37,12 +37,25 @@ SURVEY_CSV_NEW = "AI 채팅 기록 공유 접수(응답) - 설문지 응답 시�
 # 2차 모집은 폼을 새로 만들어 열 구성이 다르다. 접수 순서대로 P12 부터 붙인다.
 NEW_PID_START = 12
 
-# 연구에서 제외한 응답. 접수 시각으로 지목한다 (실명을 스크립트에 남기지 않는다).
-# p_id 를 붙이기 전에 걸러내므로, 뒤 응답의 번호가 앞으로 당겨져 빈 번호가 생기지 않는다.
-EXCLUDED = {
-    # 대화 로그를 쓰지 않기로 함. 설문만 있고 채팅 원본이 제출되지 않았다.
-    "2026. 7. 30 오전 10:42:28": "대화 로그 미제출",
+# 번호를 고정한 응답. 접수 시각으로 지목한다 (실명을 스크립트에 남기지 않는다).
+#
+# 왜 필요한가 — 기본 규칙이 '접수 순서대로 P12 부터'라서, 중간에 응답이 하나
+# 끼거나 빠지면 그 뒤 번호가 통째로 밀린다. 그러면 이미 만들어 둔 코딩 시트와
+# 분석 결과가 전부 다른 사람을 가리키게 된다. 실제로 2026-07-30 에 로그 미제출
+# 1명을 빼면서 한 번 밀렸고, 그때 P20 의 정체가 바뀌었다 (README 참조).
+#
+# 그래서 규칙을 하나 세운다. **한 번 부여한 p_id 는 바꾸지 않는다.**
+# 뒤늦게 합류한 응답은 접수 순서와 무관하게 다음 빈 번호를 받는다.
+PINNED = {
+    # 로그 미제출로 제외됐다가 2026-08-04 에 제출해 재포함. 접수 시각으로는
+    # P20 자리지만, 그 번호는 이미 다른 사람 것이므로 뒤에 붙인다.
+    "2026. 7. 30 오전 10:42:28": "P21",
+    # 3차 합류.
+    "2026. 8. 3 오후 3:56:38": "P22",
 }
+
+# 연구에서 아예 뺀 응답. 번호를 받지 않는다. 지금은 없다.
+EXCLUDED = {}
 NEW_TIMESTAMP_COL = 0
 
 # 새 폼 열 번호 -> 분석표 열 이름.
@@ -139,10 +152,33 @@ def read_survey():
     return (a_header, a_rows), (b_header, b_rows)
 
 
-def read_new_survey():
-    """2차 폼. 헤더 1줄 + 응답. 접수 순서를 그대로 P12~ 로 쓴다.
+def assign_pids(new_rows):
+    """2차 폼 각 행에 p_id 를 붙인다. 이 함수가 배정의 유일한 출처다.
 
-    EXCLUDED 는 여기서 걸러낸다. p_id 부여 전에 빼야 번호가 이어진다.
+    PINNED 에 적힌 접수 시각은 그 번호를 그대로 쓰고, 나머지는 P12 부터
+    순서대로 채우되 고정된 번호는 건너뛴다. 배정을 두 군데서 따로 계산하면
+    분석표와 매핑이 어긋나므로 반드시 이 함수를 거친다.
+    """
+    taken = set(PINNED.values())
+    pids, n = [], NEW_PID_START
+    for r in new_rows:
+        pinned = PINNED.get(r[NEW_TIMESTAMP_COL].strip())
+        if pinned:
+            pids.append(pinned)
+            continue
+        while f"P{n:02d}" in taken:
+            n += 1
+        pids.append(f"P{n:02d}")
+        n += 1
+    if len(set(pids)) != len(pids):
+        sys.exit(f"[중단] p_id 중복: {sorted(pids)}")
+    return pids
+
+
+def read_new_survey():
+    """2차 폼. 헤더 1줄 + 응답. 번호는 assign_pids() 가 붙인다.
+
+    EXCLUDED 는 여기서 걸러낸다. 번호를 받지 않고 아예 빠지는 응답이다.
     """
     path = SURVEY / SURVEY_CSV_NEW
     if not path.exists():
@@ -178,8 +214,7 @@ def tidy(field, value):
 def new_rows_as_analysis(new_rows, b_header):
     """2차 폼 응답을 1차 분석표(표 B) 열 구성으로 변환한다."""
     out = []
-    for i, r in enumerate(new_rows):
-        pid = f"P{NEW_PID_START + i:02d}"
+    for pid, r in zip(assign_pids(new_rows), new_rows):
         rec = {"p_id": pid}
         for field, col in NEW_COLS.items():
             rec[field] = tidy(field, r[col] if col < len(r) else "")
@@ -207,13 +242,13 @@ def build_mapping(a_header, a_rows, new_rows=()):
     if len(mapping) != len(a_rows):
         sys.exit(f"[중단] 표 A {len(a_rows)}행 중 {len(mapping)}행만 매핑됨. 빈 이름/번호 확인 필요.")
 
-    for i, r in enumerate(new_rows):
+    for pid, r in zip(assign_pids(new_rows), new_rows):
         name = r[NEW_NAME_COL].strip()
         if name in mapping:
             sys.exit(f"[중단] '{name}' 이 1차와 2차 설문에 모두 있음.")
         link_col = 4        # 2차 폼의 '공유할 ChatGPT 채팅 링크'
         mapping[name] = {
-            "pid": f"P{NEW_PID_START + i:02d}",
+            "pid": pid,
             "link": r[link_col].strip() if link_col < len(r) else "",
         }
 

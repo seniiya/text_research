@@ -1,0 +1,2 @@
+﻿utterance_id,participant_id,turn_index,sentence_index,prev_assistant_turn,text,speech_act_coder1,emotion_surface_coder1,note
+P17-t01-s01,P17,1,1,,Amd 그래픽 드라이버 업데이트 후 자꾸 스피커가 지지직거려 왜 그런걸까,Q,NONE,
