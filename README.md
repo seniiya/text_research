@@ -386,14 +386,29 @@ notes/
 | ② 시트를 만들 때 | `make_coding_sheet.py` | 제1부(AI 응답 전략) 시트 |
 | | `make_speechact_pilot.py` | 제4부(사용자 화행) 시트 |
 | ③ 코딩한 뒤 | `sync_labels.py` | XLSX 에 입력한 라벨 → 같은 이름 CSV. **정본은 XLSX**라 이걸 돌려야 Git 에 보인다 |
-| ④ 분석할 때 | `agreement.py` | 코더 간 일치도 (Cohen's κ) |
+| ④ 분석할 때 | `analyze_speechact.py` | **제4부 1차 분석 전부.** 보고서에 나오는 모든 수치를 여기서 낸다 |
+| | `make_report_charts.py` | 위 결과로 보고서 그림 `c1`~`c6` 을 그린다 |
+| | `surface_va_probe.py` | 정서 표면성 ↔ 설문 자기보고 VA 상관 (다음 실험 사전 탐색) |
+| | `agreement.py` | 코더 간 일치도 (Cohen's κ) |
 | | `compare_speechact_versions.py` | 제4부 v1 vs v2 대조표 |
 | | `va_structure.py` | 설문 자기보고 VA 세 값(전/주제1/후)의 구조 확인 |
 
-**직접 실행하지 않는 것 2개** — 위 스크립트들이 안에서 불러 쓴다.
+**분석은 이 순서로 돌린다.** 뒤엣것이 앞엣것의 출력을 읽는다.
+
+```bash
+python scripts/analyze_speechact.py     # → report_stats.json · participants.csv
+python scripts/make_report_charts.py    # → data/output/report/c1..c6.png
+```
+
+> **보고서 수치는 손으로 옮겨 적지 않는다.** 1차 보고서는 임시 스크립트로 뽑아
+> Word 에 옮겨 적었더니, 라벨을 고쳤을 때 어느 문장이 틀리는지 알 수 없었다.
+> 지금은 라벨이 바뀌면 위 두 줄을 다시 돌리면 된다.
+
+**직접 실행하지 않는 것 3개** — 위 스크립트들이 안에서 불러 쓴다.
 
 | | |
 |---|---|
+| `speechact_data.py` | 제4부 코딩 시트·설문 **공용 로더**. 제외 규칙(규칙 6 등)이 한 군데에만 있도록 분석 스크립트 셋이 전부 이걸 거친다 |
 | `markdown_chat.py` | 마크다운 구조를 살려 코딩 단위를 만든다. GPT 가 한 문장을 여러 문단에 걸쳐 쓰는 걸 다시 이어 붙이는 부분 |
 | `split_sentences.py` | 문장 분리 규칙(제1부 3항). 단독 실행하면 분리 결과 **검증 리포트**만 찍는다 (파일 안 만듦) |
 
