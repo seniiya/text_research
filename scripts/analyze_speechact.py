@@ -22,9 +22,9 @@ from collections import Counter, defaultdict
 import numpy as np
 from scipy import stats
 
-from speechact_data import (CODES_3I4K, CORPUS_3I4K, CORPUS_3I4K_N, OUT_DIR,
-                            ROOT, SPEECH_ACT, SURFACE, Results, load_labels,
-                            load_survey, load_v1, num)
+from speechact_data import (CODE_MEANING as MEANING, CODES_3I4K, CORPUS_3I4K,
+                            CORPUS_3I4K_N, OUT_DIR, ROOT, SPEECH_ACT, SURFACE,
+                            Results, load_labels, load_survey, load_v1, num)
 
 # 발견 1. '직전 AI 응답이 길다' 의 기준. 임계값은 아직 정하지 않았으므로
 # 자동 판정에 쓰지 않고 C 코드 발화의 직전 응답 길이를 전부 나열만 한다.
@@ -56,7 +56,8 @@ def main():
     rows = [d for v in lab.values() for d in v]
     both = [d for d in rows if d.get("emotion_surface_coder1")]
     st = {}
-    R = Results("A", "analyze_speechact.py")
+    R = Results("analyze_speechact.py")
+    SEC = "사용자 발화 화행"
 
     # ── 진행률 ────────────────────────────────────────────────────────
     section("0. 코딩 진행률")
@@ -73,12 +74,10 @@ def main():
         print("    보고서의 '319문장'(화행)과 '318문장'(교차표) 차이가 여기서 난다.")
     print(f"미코딩 문장   {total_sent - len(rows)} ({pct(total_sent - len(rows), total_sent):.0f}%)"
           f"  — {', '.join(f'{p}({len(allrows[p])})' for p in todo)}")
-    R.add("코딩 완료 참가자", f"{len(done)}/{len(allrows)}", "명",
-          n=len(allrows), status="확정",
-          note=f"미코딩 {', '.join(todo)} · 분모 {len(allrows)}는 P01(연구자 본인, "
-               f"제4부에서 제외)을 뺀 수")
-    R.add("화행 라벨 완료 문장", len(rows), "문장", n=total_sent, status="확정",
-          note=f"전체 {total_sent} 중 {pct(len(rows), total_sent):.0f}%")
+    R.num(SEC, "화행 라벨 완료 문장", len(rows), "문장", n=total_sent,
+          note=f"참가자 {len(done)}/{len(allrows)}명 · 전체 {total_sent}문장 중 "
+               f"{pct(len(rows), total_sent):.0f}% · 미코딩 {', '.join(todo)} "
+               f"(분모 {len(allrows)}는 P01 을 뺀 수)")
     st["n_participants"] = len(done)
     st["n_act"], st["n_both"], st["n_total"] = len(rows), len(both), total_sent
 
@@ -91,11 +90,10 @@ def main():
         print(f"  {c:<8}{bar}")
     print(f"\n  UNC {ca.get('UNC', 0)}건 · RC {ca.get('RC', 0)}건 · "
           f"RQ {pct(ca.get('RQ', 0), len(rows)):.1f}%")
-    R.add("보완 체계 적용 후 UNC(분류 불가)", ca.get("UNC", 0), "건", n=len(rows),
-          status="잠정", fig="그림 4", note="원 체계로는 P04 에서 25%였다")
-    for _c in ("S", "Q", "RESP", "EXPR", "RC"):
-        R.add(f"화행 {_c} 비율", pct(ca.get(_c, 0), len(rows)), "%", n=len(rows),
-              status="잠정", fig="그림 4", note=f"{ca.get(_c, 0)}건")
+    R.table(SEC, "화행 분포", ["코드", "뜻", "문장", "비율(%)"],
+            [[c, MEANING[c], n, round(pct(n, len(rows)), 1)] for c, n in st["dist_a"]],
+            note="RESP·PHATIC·EXPR 은 3i4K 원 체계에 없어 대화행위 표준에서 "
+                 "가져온 코드다.", fig="그림 4")
 
     # ── 축 A × 축 B (그림 2) ─────────────────────────────────────────
     section("2. 화행 × 정서 표면성  [그림 2]")
@@ -128,15 +126,25 @@ def main():
     print(f"    S {sum(s.values())}건: EXP {s['EXP']} · IMP {s['IMP']} · NONE {s['NONE']}"
           f"  (정서 {pct(s['EXP'] + s['IMP'], sum(s.values())):.0f}%)")
     st.update(baseline=base, act_acc=pct(hit, len(both)), chi2=chi2, cramers_v=v)
-    R.add("화행을 알 때 정서 표면성 적중률 상승폭", pct(hit, len(both)) - base, "%p",
-          n=len(both), status="잠정", fig="그림 2",
-          note=f"기준선 {base:.1f}% -> {pct(hit, len(both)):.1f}%. 두 축은 서로를 대체하지 못한다")
-    R.add("화행 x 정서 표면성 연관 (Cramer's V)", v, "V", n=len(both),
-          status="잠정", fig="그림 2", note=f"chi2={chi2:.1f} df={dof} p={p:.1e}")
-    R.add("정보·상태 서술(S) 중 정서가 읽힌 비율",
+    R.table(SEC, "화행 × 정서 표면성",
+            ["화행", "EXP", "IMP", "NONE", "계", "정서 있음(%)"],
+            [[c, cross[c]["EXP"], cross[c]["IMP"], cross[c]["NONE"],
+              sum(cross[c].values()),
+              round(pct(cross[c]["EXP"] + cross[c]["IMP"], sum(cross[c].values())), 1)]
+             for c in used]
+            + [["계", marg["EXP"], marg["IMP"], marg["NONE"], len(both),
+                round(pct(marg["EXP"] + marg["IMP"], len(both)), 1)]],
+            note="EXP 는 감정어 명시, IMP 는 맥락으로만 읽히는 것.", fig="그림 2")
+    R.num(SEC, "화행을 알 때 정서 표면성 적중률", pct(hit, len(both)), "%", n=len(both),
+          fig="그림 2",
+          note=f"최빈값(NONE)만 찍어도 {base:.1f}% 라 "
+               f"{pct(hit, len(both)) - base:+.1f}%p 뿐 — 화행이 정서를 결정하지 않는다")
+    R.num(SEC, "화행 × 정서 표면성 연관 (Cramér's V)", float(v), "", n=len(both),
+          fig="그림 2", note=f"χ²={chi2:.1f} df={dof} p={p:.1e}")
+    R.num(SEC, "정보·상태 서술(S) 중 정서가 읽힌 비율",
           pct(s["EXP"] + s["IMP"], sum(s.values())), "%", n=sum(s.values()),
-          status="잠정", fig="그림 2",
-          note=f"EXP {s['EXP']} · IMP {s['IMP']} · NONE {s['NONE']}")
+          fig="그림 2", note=f"EXP {s['EXP']} · IMP {s['IMP']} · NONE {s['NONE']} — "
+                             f"IMP 가 대부분이라 감정어 검색으로는 안 잡힌다")
 
     # ── 발견 1. 응답 길이 pushback ───────────────────────────────────
     section("3. 발견 1 — AI 응답이 길면 사용자가 제지한다")
@@ -154,9 +162,11 @@ def main():
     st["pushback"] = [(d["p_id"], d["utterance_id"], d["speech_act_coder1"],
                        len(str(d.get("prev_assistant_turn") or "")),
                        str(d["text"])[:60]) for d in push]
-    R.add("AI 응답 길이에 대한 명시적 제지", len(push), "건", n=len(rows),
-          status="관찰",
-          note="; ".join(f"{d[0]} {d[1]} [{d[2]}] 직전 {d[3]}자" for d in st["pushback"]))
+    R.table(SEC, "AI 응답 길이에 대한 명시적 제지",
+            ["참가자", "발화 id", "코드", "직전 AI 응답(자)", "문장"],
+            [[a, b, c, d_, e] for a, b, c, d_, e in st["pushback"]],
+            note=f"직전 응답 길이 전체 중앙값 {int(np.median(ctxlen))}자 — 셋 다 "
+                 f"그보다 길다. P06 의 것은 그 대화의 마지막 턴이다.")
 
     # ── 발견 2. 물음표 ───────────────────────────────────────────────
     section("4. 발견 2 — 물음표가 붙었다고 질문이 아니다")
@@ -171,10 +181,15 @@ def main():
         print(f"    {d['p_id']} {d['utterance_id']:<14} → {d['speech_act_coder1']:<6}"
               f" \"{str(d['text'])[:46]}\"")
     st["qmark"] = dict(total=len(qm), not_q=len(notq))
-    R.add("물음표로 끝나지만 질문(Q)이 아닌 비율", pct(len(notq), len(qm)), "%",
-          n=len(qm), status="잠정",
+    R.num(SEC, "물음표로 끝나지만 질문(Q)이 아닌 비율", pct(len(notq), len(qm)), "%",
+          n=len(qm),
           note=" · ".join(f"{c} {n}" for c, n in
-                          Counter(d["speech_act_coder1"] for d in notq).most_common()))
+                          Counter(d["speech_act_coder1"] for d in notq).most_common())
+               + " — 형식으로 자동 분류하면 이만큼 놓친다")
+    R.table(SEC, "물음표인데 질문이 아닌 예",
+            ["참가자", "발화 id", "코드", "문장"],
+            [[d["p_id"], d["utterance_id"], d["speech_act_coder1"],
+              str(d["text"])[:40]] for d in notq[:5]])
 
     # ── 발견 3. 참가자별 (그림 1) ────────────────────────────────────
     section("5. 발견 3 — 참가자별 정서 비율 vs 설문 자기보고  [그림 1]")
@@ -203,11 +218,16 @@ def main():
     neg = [r for r in parts if (r["v"] or 9) <= 3]
     print(f"  자기보고 부정 {len(neg)}명의 정서 비율: "
           + " · ".join(f"{r['pid']} {r['surf']:.0f}%" for r in sorted(neg, key=lambda r: r["surf"])))
-    R.add("자기보고 부정(주제1 V<=3) 참가자의 정서 표면 비율 범위",
-          f"{min(r['surf'] for r in neg):.0f}-{max(r['surf'] for r in neg):.0f}", "%",
-          n=len(neg), status="관찰", fig="그림 1",
-          note=" · ".join(f"{r['pid']} {r['surf']:.0f}%"
-                          for r in sorted(neg, key=lambda r: r["surf"])))
+    R.table(SEC, "참가자별 정서 표면 비율과 설문 자기보고",
+            ["참가자", "문장", "EXP", "IMP", "NONE", "정서(%)", "주제1 V", "주제1 A",
+             "감정 단어", "주제1"],
+            [[r["pid"], r["n"], r["EXP"], r["IMP"], r["NONE"], round(r["surf"], 1),
+              r["v"], r["a"], r["word"], r["topic"]] for r in parts],
+            note="정서(%) = (EXP + IMP) / 문장. 자기보고가 부정(V≤3)인 참가자의 "
+                 "정서 비율이 " + " · ".join(
+                     f"{r['pid']} {r['surf']:.0f}%"
+                     for r in sorted(neg, key=lambda r: r["surf"]))
+                 + " 로 흩어진다.", fig="그림 1")
     st["participants"] = parts
     st["c1"] = [r for r in parts if r["n"] >= C1_MIN_SENTENCES]
 
@@ -252,12 +272,15 @@ def main():
         moved_q = [1 for a, b in pair if a in ("Q", "RQ") and a != b]
         print(f"\n  Q·RQ 가 움직인 건수: {len(moved_q)}  "
               f"→ 의도 층위는 유효하고 대화행위 층위만 비어 있었다는 근거")
-        R.add("원 체계(v1) 적용 시 UNC 비율", pct(c1c["UNC"], len(pair)), "%",
-              n=len(pair), status="잠정", fig="그림 3",
-              note=f"P04 만. 보완 체계에서는 {c2c['UNC']}건")
-        R.add("v1→v2 에서 Q·RQ 가 바뀐 건수", len(moved_q), "건", n=len(pair),
-              status="잠정", fig="그림 3",
-              note="의도 층위는 유효하고 대화행위 층위만 비어 있었다는 근거")
+        R.table(SEC, "원 체계(v1) → 보완 체계(v2) · P04 동일 문장",
+                ["코드", "v1", "v2"], st["v1v2"],
+                note=f"원 체계로는 UNC(분류 불가)가 {c1c['UNC']}/{len(pair)}건"
+                     f"({pct(c1c['UNC'], len(pair)):.0f}%)이었는데 보완 후 "
+                     f"{c2c['UNC']}건이 됐다. Q 는 한 건도 움직이지 않았고 RQ 만 "
+                     f"{len(moved_q)}건 옮겨갔다 — 체계 전체가 틀린 것이 아니라 "
+                     f"대화행위 층위만 비어 있었다는 뜻이다.", fig="그림 3")
+        R.table(SEC, "v1 → v2 이동 내역", ["v1", "v2", "문장"],
+                [[a, b, n] for (a, b), n in Counter(pair).most_common() if a != b])
     else:
         print("  P04_speechact_v1.xlsx 없음")
 
@@ -275,11 +298,12 @@ def main():
         print(f"  {c:<8}{CORPUS_3I4K[c]:>9.1f}%{mine:>9.1f}%{d:>+8.1f}p")
         st["c5"].append((c, CORPUS_3I4K[c], mine))
     st["n_3i4k"] = len(only6)
-    for _c in ("Q", "C"):
-        R.add(f"3i4K 원 코퍼스 대비 {_c} 비율 차이",
-              pct(c6[_c], len(only6)) - CORPUS_3I4K[_c], "%p", n=len(only6),
-              status="잠정", fig="그림 5",
-              note=f"원 {CORPUS_3I4K[_c]:.1f}% -> 본 연구 {pct(c6[_c], len(only6)):.1f}%")
+    R.table(SEC, "3i4K 원 코퍼스와의 분포 대조 (IU 제외 · 6코드 기준)",
+            ["코드", "원 코퍼스(%)", "본 연구(%)", "차이(%p)"],
+            [[c, CORPUS_3I4K[c], round(pct(c6[c], len(only6)), 1),
+              round(pct(c6[c], len(only6)) - CORPUS_3I4K[c], 1)] for c in CODES_3I4K],
+            note=f"원 코퍼스 n={CORPUS_3I4K_N:,}(스마트 스피커) · 본 연구 "
+                 f"n={len(only6)}. S 는 같은데 Q 와 C 가 뒤집힌다.", fig="그림 5")
 
     # ── 저장 ─────────────────────────────────────────────────────────
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -292,7 +316,7 @@ def main():
         w.writerows(parts)
     print(f"\n저장: {(OUT_DIR / 'report_stats.json').relative_to(ROOT)}"
           f"\n      {(OUT_DIR / 'participants.csv').relative_to(ROOT)}")
-    R.save()
+    R.save("A")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,18 @@ REPORT_DIR = ROOT / "data" / "output" / "report"
 
 # 축 A. 목록 순서가 곧 판정 우선순위이자 표·차트의 정렬 순서다.
 SPEECH_ACT = ["FRAG", "RESP", "PHATIC", "EXPR", "Q", "C", "RQ", "RC", "S", "UNC"]
+CODE_MEANING = {
+    "FRAG": "절이 완결되지 않은 발화",
+    "RESP": "직전 AI 발화에 대한 대답·수락·거절",
+    "PHATIC": "인사·작별·감사·사과",
+    "EXPR": "감정·평가의 분출이 발화의 목적",
+    "Q": "실제로 답을 요구",
+    "C": "행동·수행을 요구",
+    "RQ": "의문문 형식이나 답을 요구하지 않음",
+    "RC": "명령문 형식이나 실제 지시가 아님",
+    "S": "정보·상태 서술",
+    "UNC": "위 어디에도 안 맞음",
+}
 # 3i4K 원 체계에 있는 6코드. 원 코퍼스와 대조할 때 이것만 쓴다.
 CODES_3I4K = ["FRAG", "S", "Q", "C", "RQ", "RC"]
 # 대화행위 표준에서 가져와 채운 3코드 (ISO 24617-2 · DAMSL · Searle 1976).
@@ -103,48 +115,68 @@ def num(s):
 # ── 결과 기록 ─────────────────────────────────────────────────────────
 RESULTS_DIR = ROOT / "data" / "output" / "results"
 
-# 그 수치를 발표·논문에서 어디까지 말해도 되는지. 값 자체보다 이게 중요하다.
-STATUS = {
-    "확정": "코더 1인이라도 세기만 하면 되는 값. 다시 세도 같다",
-    "잠정": "판정이 들어간 값. 코더 1인이라 κ 가 없다. 두 번째 코더 뒤 확정된다",
-    "탐색": "검정력이 부족하다. 부호·방향만 말할 수 있고 '없다'고 말하면 안 된다",
-    "관찰": "사례 수준. 통계로 주장하지 않는다",
-}
-FIELDS = ["result_id", "부", "항목", "값", "단위", "n", "상태", "산출", "그림", "비고"]
+# RESULTS.md 의 절 순서. 분석 스크립트는 어느 절에 넣을지만 정하고,
+# 순서와 배치는 collect_results.py 가 이 목록대로 한다.
+SECTIONS = [
+    "참가자",
+    "평소 AI와 무슨 대화를 하는가",
+    "이번에 실제로 한 대화",
+    "감정 자기보고 VA",
+    "사용자 발화 화행",
+    "정서 표면성과 자기보고",
+]
+
+
+def fmt_num(v, nd=1):
+    """r·V 처럼 1 미만인 값을 소수 첫째로 반올림하면 0.668 이 0.7 이 돼 의미가
+    사라진다. 자릿수를 값의 크기로 정한다."""
+    if isinstance(v, bool) or not isinstance(v, float):
+        return str(v)
+    if v == 0:
+        return "0"
+    return f"{v:.3f}" if abs(v) < 1 else f"{v:.{nd}f}"
 
 
 class Results:
-    """분석 스크립트가 주장할 만한 값을 적어 두는 곳.
+    """분석 스크립트가 RESULTS.md 에 실을 것을 적어 두는 곳.
 
-    사용:
-        R = Results("A", "analyze_speechact.py")
-        R.add("물음표로 끝나지만 Q 가 아닌 비율", 23.1, "%", n=78,
-              status="잠정", note="S 7 · RQ 6 ...")
-        R.save()
+        R = Results("analyze_survey.py")
+        R.table("참가자", "인구통계", ["구분", "값"], [["성별", "F 16 · M 6"]])
+        R.num("사용자 발화 화행", "물음표인데 Q 가 아닌 비율", 23.1, "%", n=78)
+        R.save("S")
     """
 
-    def __init__(self, prefix, source):
-        self.prefix, self.source, self.rows = prefix, source, []
+    def __init__(self, source):
+        self.source, self.items = source, []
 
-    def add(self, item, value, unit="", n=None, status="잠정", fig="", note="",
-            part="제4부"):
-        assert status in STATUS, f"상태는 {list(STATUS)} 중 하나여야 한다: {status}"
-        if isinstance(value, float):
-            # r · Cramer's V 처럼 절댓값이 1 미만인 값을 소수 첫째로 반올림하면
-            # 0.668 이 0.7 이 돼 의미가 사라진다. 자릿수를 크기로 정한다.
-            value = "0" if value == 0 else (
-                f"{value:.3f}" if abs(value) < 1 else f"{value:.1f}")
-        self.rows.append({
-            "result_id": f"{self.prefix}-{len(self.rows) + 1:02d}",
-            "부": part, "항목": item, "값": str(value),
-            "단위": unit, "n": "" if n is None else n, "상태": status,
-            "산출": self.source, "그림": fig, "비고": note})
-        return self.rows[-1]
+    def num(self, section, item, value, unit="", n=None, fig="", note=""):
+        assert section in SECTIONS, f"모르는 절: {section}"
+        self.items.append(dict(kind="num", section=section, item=item,
+                               value=fmt_num(value), unit=unit,
+                               n="" if n is None else n, fig=fig, note=note,
+                               source=self.source))
 
-    def save(self):
+    def table(self, section, title, headers, rows, note="", fig=""):
+        """표는 부르는 쪽이 이미 round() 로 자릿수를 정해 넘긴다. 여기서 다시
+        반올림하면 안 되므로 %g 로 표기만 다듬는다 — 5.0 은 '5', 0.9 는 '0.9'."""
+        assert section in SECTIONS, f"모르는 절: {section}"
+        def cell(c):
+            if c is None:
+                return ""
+            if isinstance(c, float):
+                return f"{c:g}"
+            return str(c)
+        self.items.append(dict(kind="table", section=section, title=title,
+                               headers=list(headers),
+                               rows=[[cell(c) for c in r] for r in rows],
+                               note=note, fig=fig, source=self.source))
+
+    def save(self, key):
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        p = RESULTS_DIR / f"{self.prefix}.json"
+        p = RESULTS_DIR / f"{key}.json"
         with open(p, "w", encoding="utf-8") as fh:
-            json.dump(self.rows, fh, ensure_ascii=False, indent=1)
-        print(f"\n결과 {len(self.rows)}건 기록: {p.relative_to(ROOT)}")
+            json.dump(self.items, fh, ensure_ascii=False, indent=1)
+        nt = sum(1 for i in self.items if i["kind"] == "table")
+        print(f"\n결과 기록: {p.relative_to(ROOT)}  "
+              f"(표 {nt} · 수치 {len(self.items) - nt})")
         return p

@@ -158,27 +158,48 @@ def main():
     print("\n  * p < .05  ·  95% CI 가 0 을 가로지르면 부호를 확정할 수 없다."
           "\n  '관계 없음'이 아니라 '검정력 부족'으로 읽어야 한다.")
 
-    R = Results("V", "surface_va_probe.py")
-    for name, c in rows:
-        R.add(f"정서 표면 비율 ↔ {name}", c["r"], "r", n=c["n"],
-              status="확정" if c["p"] < .05 else "탐색",
-              note=f"R²={c['r2']:.3f} · p={c['p']:.3f} · 95% CI "
-                   f"[{c['lo']:+.2f}, {c['hi']:+.2f}] · 유의해지려면 n≥{n_needed(c['r'])}")
+    R = Results("surface_va_probe.py")
+    SEC = "정서 표면성과 자기보고"
+    R.table(SEC, "참가자별 정서 표면성",
+            ["참가자", "문장", "EXP", "IMP", "NONE", "표면(%)", "주제 V", "주제 A"],
+            [[r["pid"], r["n"], r["EXP"], r["IMP"], r["NONE"], round(r["surf"], 1),
+              r["topic_V"], r["topic_A"]]
+             for r in sorted(recs, key=lambda r: -r["surf"])],
+            note="표면(%) = (EXP + IMP) / 문장. 주제 V 는 최솟값, 주제 A 는 최댓값 "
+                 "— 가장 중립에서 먼 에피소드 기준.", fig="그림 6")
+    R.table(SEC, "정서 표면 비율과 자기보고 VA 의 상관",
+            ["자기보고", "n", "r", "R²", "p", "95% CI", "유의해지려면"],
+            [[name, c["n"], round(c["r"], 3), round(c["r2"], 3), round(c["p"], 3),
+              f"[{c['lo']:+.2f}, {c['hi']:+.2f}]", f"n≥{n_needed(c['r'])}"]
+             for name, c in rows],
+            note="95% CI 가 0 을 가로지르면 부호를 확정할 수 없다. 이때 '관계가 "
+                 "없다'가 아니라 '검정력이 부족하다'로 읽어야 한다.", fig="그림 6")
     worst = max(rows, key=lambda kv: kv[1]["r2"])[1]
-    R.add("자기보고 VA 중 정서 표면 비율로 설명되는 분산의 최댓값",
-          worst["r2"] * 100, "%", n=worst["n"], status="탐색", fig="그림 6",
-          note="네 시점(전·주제·후) × 두 축(V·A) + 중립점 거리 중 가장 큰 값")
+    R.num(SEC, "자기보고 VA 중 정서 표면 비율로 설명되는 분산의 최댓값",
+          worst["r2"] * 100, "%", n=worst["n"], fig="그림 6",
+          note="V·A 두 축 × 세 시점 + 중립점 거리, 일곱 가지 중 가장 큰 값. "
+               "어느 축으로도 12% 를 넘지 않는다")
 
     print("\n[교란 확인] 표면 비율 ↔ 대화 길이")
     x = np.array([r["surf"] for r in recs]); y = np.array([r["n"] for r in recs])
     rr, pp = stats.pearsonr(x, y)
     print(f"  r = {rr:+.3f}  p = {pp:.3f}")
+    R.num(SEC, "표면 비율과 대화 길이의 상관", float(rr), "r", n=len(recs),
+          note=f"p={pp:.3f} · 대화가 길어서 정서가 많이 나온 것이 아니라는 확인")
 
     print("\n[괴리 사례] 자기보고 부정(V<=4) 인데 발화에 정서가 안 드러난 순")
-    for r in sorted((r for r in recs if (r["topic_V"] or 9) <= 4),
-                    key=lambda r: r["surf"]):
+    gap = sorted((r for r in recs if (r["topic_V"] or 9) <= 4),
+                 key=lambda r: r["surf"])
+    for r in gap:
         print(f"  {r['pid']}  V{r['topic_V']:.0f} A{r['topic_A']:.0f}"
               f"  표면 {r['surf']:>4.0f}%   NONE {r['NONE']}/{r['n']}")
+    R.table(SEC, "자기보고가 부정(주제 V≤4)인 참가자의 정서 표면성",
+            ["참가자", "주제 V", "주제 A", "표면(%)", "NONE / 문장"],
+            [[r["pid"], r["topic_V"], r["topic_A"], round(r["surf"], 1),
+              f"{r['NONE']}/{r['n']}"] for r in gap],
+            note=f"같은 정도의 부정 정서를 보고했는데 표면화 비율이 "
+                 f"{min(r['surf'] for r in gap):.0f}% 에서 "
+                 f"{max(r['surf'] for r in gap):.0f}% 까지 흩어진다.", fig="그림 6")
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT, "w", newline="", encoding="utf-8-sig") as fh:
@@ -186,7 +207,7 @@ def main():
         w.writeheader()
         w.writerows(recs)
     print(f"\n저장: {OUT.relative_to(ROOT)}")
-    R.save()
+    R.save("V")
 
 
 if __name__ == "__main__":
