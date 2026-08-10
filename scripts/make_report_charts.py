@@ -218,6 +218,64 @@ def c6():
     save(fig, "c6.png")
 
 
+# ── c7. 제1부 ESConv 코더 간 일치도 ──────────────────────────────────
+def c7(pid="P01"):
+    """'이 수치는 못 쓴다'를 보이기 위한 그림.
+
+    P01 은 coder1 이 참여자 본인이라 신뢰도로 보고할 수 없다. 그런데도 그리는
+    이유는, 코드별 kappa 가 어디서 무너지는지가 코드북의 구멍을 그대로
+    가리키기 때문이다. 신뢰도 근거가 아니라 진단 자료로만 쓴다.
+    """
+    from collections import Counter
+    from agreement import CODING, kappa, read_labels
+
+    a, b = (read_labels(CODING / f"coder{i}" / f"{pid}.xlsx") for i in (1, 2))
+    keys = [k for k in a if k in b and a[k]["esconv"] and b[k]["esconv"]
+            and a[k]["esconv"] != "-" and b[k]["esconv"] != "-"]
+    pairs = [(a[k]["esconv"], b[k]["esconv"]) for k in keys]
+    po, pe, kall = kappa(pairs)
+    ca, cb = Counter(x for x, _ in pairs), Counter(y for _, y in pairs)
+    rows = []
+    for c in sorted(set(ca) | set(cb)):
+        bin_ = [(int(x == c), int(y == c)) for x, y in pairs]
+        rows.append((c, kappa(bin_)[2], ca[c], cb[c],
+                     sum(1 for x, y in pairs if x == y == c)))
+    rows.sort(key=lambda r: r[1])
+
+    fig, ax = plt.subplots(figsize=(9.0, 4.6))
+    ok = 0.70                                   # 통상 요구되는 하한
+    ax.axvspan(-0.15, ok, color=B250, alpha=.12, zorder=0)
+    ax.xaxis.grid(True, color=RULE, lw=.8); ax.set_axisbelow(True)
+    ax.barh([r[0] for r in rows], [r[1] for r in rows], height=.6,
+            color=[B550 if r[1] < .3 else B450 for r in rows], zorder=3)
+    for i, (c, k, n1, n2, hit) in enumerate(rows):
+        ax.text(k + .015, i, f"{k:.2f}", va="center", fontsize=9.5,
+                color="#0b0b0b", fontweight="bold")
+        ax.text(1.06, i, f"coder1 {n1:>2}   coder2 {n2:>2}   일치 {hit:>2}",
+                va="center", ha="right", fontsize=8.5, color=MUTED)
+    ax.axvline(ok, color=B550, lw=1.3, ls="--", zorder=4)
+    ax.axvline(0, color="#c3c2b7", lw=.8, zorder=4)
+    ax.set_xlim(-0.15, 1.06); ax.set_ylim(len(rows) - .4, -1.1)
+    ax.text(ok, -0.75, "  통상 요구 수준 0.70", fontsize=9, color=B550,
+            va="center", fontweight="bold")
+    for sp in ("top", "right", "left"):
+        ax.spines[sp].set_visible(False)
+    ax.spines["bottom"].set_color("#c3c2b7")
+    ax.tick_params(length=0)
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([r[0] for r in rows], fontsize=10.5, fontweight="bold")
+    ax.set_xticks([0, .2, .4, .6, .8, 1.0])
+    ax.set_xlabel("코드별 Cohen's κ", fontsize=9.5, labelpad=8)
+    ax.text(0, 1.16, "제1부 ESConv 코딩은 아직 신뢰도가 확보되지 않았다",
+            transform=ax.transAxes, fontsize=13, fontweight="bold", color="#0b0b0b")
+    ax.text(0, 1.07,
+            f"{pid} · {len(pairs)}행 · 전체 κ = {kall:.3f} (단순 일치 {po:.0%})"
+            f"   ·   8개 코드 전부 0.70 미만   ·   이 수치는 보고용이 아니다",
+            transform=ax.transAxes, fontsize=9, color=MUTED)
+    save(fig, "c7.png")
+    return kall
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     p = BUILD / "chart_input.json"
@@ -225,7 +283,7 @@ def main():
         sys.exit("chart_input.json 이 없다. 먼저 analyze_speechact.py 를 돌린다.")
     st = json.load(open(p, encoding="utf-8"))
     print("차트 생성")
-    c1(st); c2(st); c3(st); c4(st); c5(st); c6()
+    c1(st); c2(st); c3(st); c4(st); c5(st); c6(); c7()
 
 
 if __name__ == "__main__":
