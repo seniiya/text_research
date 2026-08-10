@@ -130,9 +130,10 @@ python scripts/compare_speechact_versions.py P04           # v1 vs v2 대조표
 <details>
 <summary><b>1차 분석에서 나온 것</b> — 보고서: <code>data/output/report/</code></summary>
 
-**① AI 응답이 길면 사용자가 명시적으로 제지한다.** `P03` 2회 · `P06` 1회, 셋 다 화행은
-`C`. 직전 AI 응답이 820 / 404자였다. `C` + 긴 응답을 pushback 자동 탐지 신호로 쓸 수 있다
-(제2부 12항 `VERBOSE`).
+**① AI 응답이 길면 사용자가 명시적으로 제지한다.** `P03` 2회(`C`·`C`) · `P06` 1회(`RESP`).
+직전 AI 응답이 814 / 401 / 979자로 전체 중앙값(970자)보다 길다. **`P06`의 것은 그 대화의
+마지막 턴이다** — 제지 직후 대화가 끝났다. 화행 코드가 갈리므로 자동 탐지 신호는 `C` 코드가
+아니라 **'직전 응답이 길다 + 길이를 지적하는 표현'**으로 잡는다 (제2부 12항 `VERBOSE`).
 
 **② 물음표가 붙었다고 질문이 아니다.** 물음표로 끝나는 78문장 중 **18건(23%)이 `Q`가
 아니다.** `~거든?` `~잖아?` 처럼 정보를 제시하며 확인을 구하는 형태가 `P02`·`P07`·`P22`에서
@@ -156,8 +157,8 @@ python scripts/compare_speechact_versions.py P04           # v1 vs v2 대조표
 20% 미만은 카페 검색·기준금리·과제·스케줄이다.
 
 **두 축이 서로 환원되지 않는다.** `EXPR`이 정서 91%인 것은 당연하지만 `S`(정보 서술)도
-31%가 정서를 담고 있고, 그중 28건이 `IMP`(감정어 없이 맥락으로만 읽힘)다. 화행 축만으로는
-보이지 않는다.
+31%가 정서를 담고 있고, 그중 28건이 `IMP`(감정어 없이 맥락으로만 읽힘)다. **화행을 알아도
+정서 표면성을 맞히는 정확도는 65.1% → 72.3%(+7.2%p)에 그친다** (Cramér's V = 0.481).
 
 </details>
 
@@ -169,14 +170,16 @@ python scripts/compare_speechact_versions.py P04           # v1 vs v2 대조표
 
 ```
 UNC  7  ->  RESP 4 · EXPR 2 · PHATIC 1     무작위가 아니라 셋으로 갈림
-S   16  ->  S 12 · RESP 4                   S 에도 응답이 섞여 있었음
-Q    4  ->  Q 4        RQ 1 -> RQ 1         원래 맞던 코드는 그대로
+S   16  ->  S 11 · RESP 4 · EXPR 1          S 에도 응답·표출이 섞여 있었음
+Q    4  ->  Q 4                             원래 맞던 코드는 그대로
+RQ   1  ->  EXPR 1                          "아니 이해가안돼서그래"
 
-UNC 25% -> 0%      코드 변경 11/28 (39%)
+UNC 25% -> 0%      코드 변경 13/28 (46%)
 ```
 
-`Q`·`RQ`가 하나도 안 움직인 것이 핵심이다. 체계 전체가 틀린 게 아니라
-**대화행위 층위만 비어 있었다**는 뜻이다.
+**`Q`가 한 건도 안 움직인 것이 핵심이다.** 체계 전체가 틀린 게 아니라
+**대화행위 층위만 비어 있었다**는 뜻이다. 움직인 `RQ` 1건도 의문문이 아니라 감정
+분출이어서, 원 체계에 `EXPR`이 없어 `RQ`로 밀려 들어간 사례다 — 같은 결론을 뒷받침한다.
 
 > 원 체계(3i4K)는 **스마트 스피커 명령 발화**를 대상으로, 억양으로만 갈리는 문장을
 > 걸러내려고 만들어졌다. 대화 이력을 의도적으로 배제하므로 "직전 발화에 대한 응답"이
@@ -358,12 +361,20 @@ data/
              P##_speechact.xlsx  제4부 — 18명 319문장 완료 (P01 제외 21명분)
              P04_speechact_v1.xlsx  제4부 v1 보존본. 입력하지 않는다
     coder2/                    제1부 P01 185 완료 · 제4부 전부 대기
-  output/                   분석 산출물 (스크립트가 만든다. 직접 고치지 않는다)
-    pilot_speechact/
-      P04_v1_v2_compare.csv    제4부 v1 vs v2 대조표
-    report/                    교수님 보고용 (손으로 만든다. 재생성 안 됨)
-      화행코딩_1차보고_*.docx     발견 4개 + 차트 4장
-      c1~c4.png                차트 원본
+  output/                   분석 산출물. 스크립트가 만든다 — 직접 고치지 않는다
+    tables/                    ▶ 표(csv). 이름 앞머리가 어느 분석인지 말한다
+      survey_topics.csv          평소 대화 주제 · 평소 감정 · 이번 주제 분류
+      survey_va.csv              참가자별 VA (전/주제1/주제2/후 + 후−전)
+      survey_participants.csv    참가자별 설문 원표
+      speechact_participants.csv 참가자별 화행·정서 표면성
+      speechact_surface_va.csv   표면성 ↔ 자기보고 VA
+      P##_v1_v2.csv              제4부 v1 vs v2 대조 (요청 시 생성)
+    report/                    ▶ 발표·보고용
+      화행코딩_1차보고_*.docx      1차 보고서 (손으로 고쳐도 되는 유일한 산출물)
+      c1~c6.png                  그림 1~6
+    _build/                    ▶ 스크립트끼리 주고받는 중간 파일. 열 일 없다
+      chart_input.json           analyze_speechact → make_report_charts
+      results/*.json             각 분석 → collect_results
 
   raw/                   🔒 원본 대화 (.md / .json, 파일명에 실명)
   survey/                🔒 설문 원본
@@ -389,7 +400,7 @@ notes/
 | ④ 분석할 때 | `analyze_survey.py` | **설문 전용.** 인구통계 · 평소 주제/감정 · VA 구조 |
 | | `analyze_speechact.py` | **제4부 1차 분석 전부.** 보고서 수치를 여기서 낸다 |
 | | `surface_va_probe.py` | 정서 표면성 ↔ 자기보고 VA 상관 (다음 실험 사전 탐색) |
-| | `collect_results.py` | 위 셋의 결과를 모아 **`RESULTS.md` · `results.csv`** 생성 |
+| | `collect_results.py` | 위 셋의 결과를 모아 **`RESULTS.md`** 생성 |
 | | `make_report_charts.py` | 보고서 그림 `c1`~`c6` |
 | | `agreement.py` | 코더 간 일치도 (Cohen's κ) |
 | | `compare_speechact_versions.py` | 제4부 v1 vs v2 대조표 |
@@ -398,24 +409,30 @@ notes/
 **분석은 이 순서로 돌린다.** 뒤엣것이 앞엣것의 출력을 읽는다.
 
 ```bash
-python scripts/analyze_survey.py        # → data/output/results/S.json
-python scripts/analyze_speechact.py     # → report_stats.json · results/A.json
-python scripts/surface_va_probe.py      # → results/V.json
-python scripts/collect_results.py       # → RESULTS.md · data/output/results.csv
-python scripts/make_report_charts.py    # → data/output/report/c1..c6.png
+python scripts/analyze_survey.py        # → tables/survey_*.csv
+python scripts/analyze_speechact.py     # → tables/speechact_participants.csv
+python scripts/surface_va_probe.py      # → tables/speechact_surface_va.csv
+python scripts/collect_results.py       # → RESULTS.md
+python scripts/make_report_charts.py    # → report/c1..c6.png
 ```
 
 > **수치는 손으로 옮겨 적지 않는다.** 1차 보고서는 임시 스크립트로 뽑아 Word 에
 > 옮겨 적었더니, 라벨을 고쳤을 때 어느 문장이 틀리는지 알 수 없었다(실제로 세
 > 문장이 어긋나 있었다). 지금은 위 다섯 줄을 다시 돌리면 된다.
 
-### 결과는 어디에 모이나
+### 결과를 볼 곳 — 하나뿐이다
 
-**[`RESULTS.md`](RESULTS.md)** 하나만 보면 된다. 기계용 수치 표는
-[`data/output/results.csv`](data/output/results.csv).
+**[`RESULTS.md`](RESULTS.md).** 여섯 절로 나뉘고, 표마다 어느 스크립트에서
+나왔는지 적혀 있다.
 
-여섯 절로 나뉜다 — 참가자 · 평소 대화 주제 · 이번 대화 주제 · 자기보고 VA ·
-사용자 발화 화행 · 정서 표면성. 표마다 어느 스크립트에서 나왔는지 적힌다.
+```
+1 참가자                  4 감정 자기보고 VA
+2 평소 AI와 무슨 대화를 하는가   5 사용자 발화 화행
+3 이번에 실제로 한 대화        6 정서 표면성과 자기보고
+```
+
+원본 표를 엑셀로 열고 싶으면 `data/output/tables/` 의 같은 이름 csv 를 본다.
+**`RESULTS.md` 는 손으로 고치지 않는다** — 위 명령을 다시 돌리면 덮어써진다.
 
 **직접 실행하지 않는 것 3개** — 위 스크립트들이 안에서 불러 쓴다.
 

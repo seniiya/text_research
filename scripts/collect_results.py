@@ -4,13 +4,12 @@
 -----------
 1차 보고서는 수치를 사람이 Word 로 옮겨 적어서, 라벨을 고친 뒤 어느 문장이
 틀렸는지 알 수 없었다(실제로 네 문장이 어긋나 있었다). 이제 분석 스크립트가
-표와 수치를 data/output/results/*.json 에 적고, 이 스크립트가 한 문서로 모은다.
+표와 수치를 data/output/_build/results/*.json 에 적고, 이 스크립트가 한 문서로 모은다.
 표마다 어느 스크립트에서 나왔는지 적히므로 다시 뽑을 때 어디를 돌릴지 바로 안다.
 
 출력
 ----
-RESULTS.md                 절별로 표와 수치를 펼친 것
-data/output/results.csv    수치만 한 줄씩 (기계용)
+RESULTS.md   절별로 표와 수치를 펼친 것. 결과를 볼 곳은 여기 하나다.
 
 사용:
     python scripts/analyze_survey.py
@@ -19,14 +18,12 @@ data/output/results.csv    수치만 한 줄씩 (기계용)
     python scripts/collect_results.py
 """
 
-import csv
 import json
 import sys
 from datetime import date
 
 from speechact_data import RESULTS_DIR, ROOT, SECTIONS
 
-CSV_OUT = ROOT / "data" / "output" / "results.csv"
 MD_OUT = ROOT / "RESULTS.md"
 
 # 절마다 맨 앞에 붙일 한 줄. 그 절이 무엇에 대한 것인지 먼저 말한다.
@@ -125,20 +122,11 @@ def main():
           "python scripts/surface_va_probe.py    # 표면성 ↔ 자기보고",
           "python scripts/collect_results.py     # 이 파일",
           "python scripts/make_report_charts.py  # 그림 1~6",
-          "```", "",
-          "수치만 담은 기계용 표는 "
-          "[`data/output/results.csv`](data/output/results.csv).", ""]
+          "```", ""]
 
     MD_OUT.write_text("\n".join(L), encoding="utf-8")
-    CSV_OUT.parent.mkdir(parents=True, exist_ok=True)
-    with open(CSV_OUT, "w", newline="", encoding="utf-8-sig") as fh:
-        w = csv.writer(fh)
-        w.writerow(["절", "항목", "값", "단위", "n", "산출", "그림", "설명"])
-        for i in nums:
-            w.writerow([i["section"], i["item"], i["value"], i["unit"], i["n"],
-                        i["source"], i["fig"], i["note"]])
     print(f"절 {len(present)} · 표 {len(tables)} · 수치 {len(nums)}")
-    print(f"저장: {MD_OUT.relative_to(ROOT)}\n      {CSV_OUT.relative_to(ROOT)}")
+    print(f"저장: {MD_OUT.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

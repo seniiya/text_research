@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt          # noqa: E402
 import numpy as np                       # noqa: E402
 from matplotlib import font_manager as fm  # noqa: E402
 
-from speechact_data import OUT_DIR, REPORT_DIR, ROOT  # noqa: E402
+from speechact_data import BUILD, REPORT_DIR, ROOT  # noqa: E402
 from surface_va_probe import build as build_va         # noqa: E402
 
 fm.fontManager.addfont("C:/Windows/Fonts/malgun.ttf")
@@ -220,9 +220,9 @@ def c6():
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    p = OUT_DIR / "report_stats.json"
+    p = BUILD / "chart_input.json"
     if not p.exists():
-        sys.exit("report_stats.json 이 없다. 먼저 analyze_speechact.py 를 돌린다.")
+        sys.exit("chart_input.json 이 없다. 먼저 analyze_speechact.py 를 돌린다.")
     st = json.load(open(p, encoding="utf-8"))
     print("차트 생성")
     c1(st); c2(st); c3(st); c4(st); c5(st); c6()

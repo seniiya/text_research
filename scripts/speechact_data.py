@@ -20,8 +20,14 @@ from openpyxl import load_workbook
 ROOT = Path(__file__).resolve().parent.parent
 CODER1 = ROOT / "data" / "coding" / "coder1"
 SURVEY_CSV = ROOT / "data" / "deid" / "survey_analysis.csv"
-OUT_DIR = ROOT / "data" / "output" / "pilot_speechact"
+# 출력은 세 곳뿐이다. 늘리지 않는다.
+#   tables/  사람이 열어 보는 표(csv). 파일 이름 앞머리가 어느 분석인지 말한다.
+#   report/  발표·보고용 산출물(docx · png).
+#   _build/  스크립트끼리 주고받는 중간 파일. 직접 열 일이 없다.
+TABLES = ROOT / "data" / "output" / "tables"
 REPORT_DIR = ROOT / "data" / "output" / "report"
+BUILD = ROOT / "data" / "output" / "_build"
+OUT_DIR = TABLES
 
 # 축 A. 목록 순서가 곧 판정 우선순위이자 표·차트의 정렬 순서다.
 SPEECH_ACT = ["FRAG", "RESP", "PHATIC", "EXPR", "Q", "C", "RQ", "RC", "S", "UNC"]
@@ -113,7 +119,7 @@ def num(s):
 
 
 # ── 결과 기록 ─────────────────────────────────────────────────────────
-RESULTS_DIR = ROOT / "data" / "output" / "results"
+RESULTS_DIR = BUILD / "results"
 
 # RESULTS.md 의 절 순서. 분석 스크립트는 어느 절에 넣을지만 정하고,
 # 순서와 배치는 collect_results.py 가 이 목록대로 한다.
@@ -172,6 +178,7 @@ class Results:
                                note=note, fig=fig, source=self.source))
 
     def save(self, key):
+        """key 는 RESULTS.md 안에서의 순서를 정한다 (1_설문 · 2_화행 · 3_표면성)."""
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         p = RESULTS_DIR / f"{key}.json"
         with open(p, "w", encoding="utf-8") as fh:

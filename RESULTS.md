@@ -454,5 +454,3 @@ python scripts/surface_va_probe.py    # 표면성 ↔ 자기보고
 python scripts/collect_results.py     # 이 파일
 python scripts/make_report_charts.py  # 그림 1~6
 ```
-
-수치만 담은 기계용 표는 [`data/output/results.csv`](data/output/results.csv).

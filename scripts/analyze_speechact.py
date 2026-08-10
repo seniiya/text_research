@@ -9,8 +9,8 @@
 출력
 ----
 표준출력                                            절별 수치 (보고서 문장과 1:1)
-data/output/pilot_speechact/report_stats.json      make_report_charts.py 입력
-data/output/pilot_speechact/participants.csv       참가자별 표
+data/output/tables/speechact_participants.csv     참가자별 표
+data/output/_build/chart_input.json               make_report_charts.py 입력
 
 사용: python scripts/analyze_speechact.py
 """
@@ -23,7 +23,7 @@ import numpy as np
 from scipy import stats
 
 from speechact_data import (CODE_MEANING as MEANING, CODES_3I4K, CORPUS_3I4K,
-                            CORPUS_3I4K_N, OUT_DIR, ROOT, SPEECH_ACT, SURFACE,
+                            CORPUS_3I4K_N, BUILD, ROOT, TABLES, SPEECH_ACT, SURFACE,
                             Results, load_labels, load_survey, load_v1, num)
 
 # 발견 1. '직전 AI 응답이 길다' 의 기준. 임계값은 아직 정하지 않았으므로
@@ -306,17 +306,18 @@ def main():
                  f"n={len(only6)}. S 는 같은데 Q 와 C 가 뒤집힌다.", fig="그림 5")
 
     # ── 저장 ─────────────────────────────────────────────────────────
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    with open(OUT_DIR / "report_stats.json", "w", encoding="utf-8") as fh:
+    BUILD.mkdir(parents=True, exist_ok=True)
+    TABLES.mkdir(parents=True, exist_ok=True)
+    with open(BUILD / "chart_input.json", "w", encoding="utf-8") as fh:
         json.dump(st, fh, ensure_ascii=False, indent=1)
     import csv as _csv
-    with open(OUT_DIR / "participants.csv", "w", newline="", encoding="utf-8-sig") as fh:
+    with open(TABLES / "speechact_participants.csv", "w", newline="", encoding="utf-8-sig") as fh:
         w = _csv.DictWriter(fh, fieldnames=list(parts[0].keys()))
         w.writeheader()
         w.writerows(parts)
-    print(f"\n저장: {(OUT_DIR / 'report_stats.json').relative_to(ROOT)}"
-          f"\n      {(OUT_DIR / 'participants.csv').relative_to(ROOT)}")
-    R.save("A")
+    print(f"\n저장: {(BUILD / 'chart_input.json').relative_to(ROOT)}"
+          f"\n      {(TABLES / 'speechact_participants.csv').relative_to(ROOT)}")
+    R.save("2_화행")
 
 
 if __name__ == "__main__":

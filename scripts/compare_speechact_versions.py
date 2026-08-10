@@ -9,7 +9,7 @@ v1 라벨이 남아 있는 참여자만 대상이다. v2 로만 코딩한 참여
 
     data/coding/<코더>/P##_speechact_v1.xlsx   v1 라벨 (보존본)
     data/coding/<코더>/P##_speechact.xlsx      v2 라벨 (현행)
-    -> data/output/pilot_speechact/P##_v1_v2_compare.csv
+    -> data/output/tables/P##_v1_v2.csv
 
 사용: python scripts/compare_speechact_versions.py P04 [--coder=coder1]
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CODING = ROOT / "data" / "coding"
-OUT = ROOT / "data" / "output" / "pilot_speechact"
+OUT = ROOT / "data" / "output" / "tables"
 
 V1_CODES = ["FRAG", "S", "Q", "C", "RQ", "RC", "UNC"]
 V2_CODES = ["FRAG", "RESP", "PHATIC", "EXPR", "Q", "C", "RQ", "RC", "S", "UNC"]
@@ -139,7 +139,7 @@ def main():
     report(pid, rows, skipped)
 
     OUT.mkdir(parents=True, exist_ok=True)
-    path = OUT / f"{pid}_v1_v2_compare.csv"
+    path = OUT / f"{pid}_v1_v2.csv"
     with open(path, "w", encoding="utf-8-sig", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=FIELDS)
         w.writeheader()

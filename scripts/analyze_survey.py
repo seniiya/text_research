@@ -14,10 +14,9 @@ VA 네 값은 서로 다른 문항이다. 차이를 계산한 값이 아니다.
 출력
 ----
 표준출력                                절별 수치
-data/output/survey/topics.csv          평소 주제·감정 복수응답 집계
-data/output/survey/va.csv              참가자별 VA 전체
-data/output/survey/participants.csv    참가자별 설문 요약
-data/output/results/S.json             RESULTS.md 로 모을 조각
+data/output/tables/survey_topics.csv        평소 주제·감정 복수응답 집계
+data/output/tables/survey_va.csv            참가자별 VA 전체
+data/output/tables/survey_participants.csv  참가자별 설문 요약
 
 사용: python scripts/analyze_survey.py
 """
@@ -30,9 +29,9 @@ from collections import Counter
 import numpy as np
 from scipy import stats
 
-from speechact_data import ROOT, Results, load_survey, num
+from speechact_data import ROOT, TABLES, Results, load_survey, num
 
-OUT = ROOT / "data" / "output" / "survey"
+OUT = TABLES
 
 # 복수응답 문항. 구글 폼이 쉼표로 잇는데 자유기술 항목 안에도 쉼표가 들어간다
 # ("분노, 짜증"). 그래서 정해진 보기를 먼저 떼어내고 나머지를 기타로 본다.
@@ -231,7 +230,7 @@ def main():
 
     # ── 저장 ─────────────────────────────────────────────────────────
     OUT.mkdir(parents=True, exist_ok=True)
-    with open(OUT / "topics.csv", "w", newline="", encoding="utf-8-sig") as fh:
+    with open(OUT / "survey_topics.csv", "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.writer(fh)
         w.writerow(["구분", "보기", "응답자수", "비율%"])
         for k, v in tc.most_common():
@@ -242,20 +241,20 @@ def main():
             w.writerow(["평소_감정상태", k, v, round(v / N * 100, 1)])
         for k, v in kinds.most_common():
             w.writerow(["이번_대화주제_분류", k, v, round(v / (N + n2) * 100, 1)])
-    with open(OUT / "va.csv", "w", newline="", encoding="utf-8-sig") as fh:
+    with open(OUT / "survey_va.csv", "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.writer(fh)
         w.writerow(hdr)
         w.writerows(varows)
-    with open(OUT / "participants.csv", "w", newline="", encoding="utf-8-sig") as fh:
+    with open(OUT / "survey_participants.csv", "w", newline="", encoding="utf-8-sig") as fh:
         keys = ["p_id", "나이", "성별", "모델", "요금제", "사용빈도", "평소_대화주제",
                 "평소_감정상태", "주제1", "주제1_V", "주제1_A", "주제2", "주제2_V",
                 "주제2_A", "전_V", "전_A", "후_V", "후_A"]
         w = csv.DictWriter(fh, fieldnames=keys, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    for f in ("topics.csv", "va.csv", "participants.csv"):
+    for f in ("survey_topics.csv", "survey_va.csv", "survey_participants.csv"):
         print(f"저장: {(OUT / f).relative_to(ROOT)}")
-    R.save("S")
+    R.save("1_설문")
 
 
 if __name__ == "__main__":

@@ -40,7 +40,7 @@ data/deid/survey_analysis.csv             전_V/A · 후_V/A · 주제1_V/A · �
 
 출력
 ----
-data/output/pilot_speechact/surface_va_probe.csv     참가자별 표
+data/output/tables/speechact_surface_va.csv     참가자별 표
 표준출력                                              상관표 · 괴리 사례
 
 사용: python scripts/surface_va_probe.py
@@ -53,10 +53,10 @@ import sys
 import numpy as np
 from scipy import stats
 
-from speechact_data import (OUT_DIR, ROOT, SURFACE, Results, load_labels,
+from speechact_data import (ROOT, SURFACE, TABLES, Results, load_labels,
                             load_survey, num)
 
-OUT = OUT_DIR / "surface_va_probe.csv"
+OUT = TABLES / "speechact_surface_va.csv"
 
 # 설문 문항 그대로. 파생값이 아니다.
 #   전_V/A   "지금 이 순간(대화 시작 직전)의 감정 상태"
@@ -207,7 +207,7 @@ def main():
         w.writeheader()
         w.writerows(recs)
     print(f"\n저장: {OUT.relative_to(ROOT)}")
-    R.save("V")
+    R.save("3_표면성")
 
 
 if __name__ == "__main__":
