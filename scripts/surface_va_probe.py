@@ -53,7 +53,8 @@ import sys
 import numpy as np
 from scipy import stats
 
-from speechact_data import OUT_DIR, ROOT, SURFACE, load_labels, load_survey, num
+from speechact_data import (OUT_DIR, ROOT, SURFACE, Results, load_labels,
+                            load_survey, num)
 
 OUT = OUT_DIR / "surface_va_probe.csv"
 
@@ -157,6 +158,17 @@ def main():
     print("\n  * p < .05  ·  95% CI 가 0 을 가로지르면 부호를 확정할 수 없다."
           "\n  '관계 없음'이 아니라 '검정력 부족'으로 읽어야 한다.")
 
+    R = Results("V", "surface_va_probe.py")
+    for name, c in rows:
+        R.add(f"정서 표면 비율 ↔ {name}", c["r"], "r", n=c["n"],
+              status="확정" if c["p"] < .05 else "탐색",
+              note=f"R²={c['r2']:.3f} · p={c['p']:.3f} · 95% CI "
+                   f"[{c['lo']:+.2f}, {c['hi']:+.2f}] · 유의해지려면 n≥{n_needed(c['r'])}")
+    worst = max(rows, key=lambda kv: kv[1]["r2"])[1]
+    R.add("자기보고 VA 중 정서 표면 비율로 설명되는 분산의 최댓값",
+          worst["r2"] * 100, "%", n=worst["n"], status="탐색", fig="그림 6",
+          note="네 시점(전·주제·후) × 두 축(V·A) + 중립점 거리 중 가장 큰 값")
+
     print("\n[교란 확인] 표면 비율 ↔ 대화 길이")
     x = np.array([r["surf"] for r in recs]); y = np.array([r["n"] for r in recs])
     rr, pp = stats.pearsonr(x, y)
@@ -174,6 +186,7 @@ def main():
         w.writeheader()
         w.writerows(recs)
     print(f"\n저장: {OUT.relative_to(ROOT)}")
+    R.save()
 
 
 if __name__ == "__main__":

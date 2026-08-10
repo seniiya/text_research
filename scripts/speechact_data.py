@@ -1,15 +1,18 @@
-"""제4부 코딩 시트와 설문을 읽는 공용 로더.
+"""분석 스크립트가 공유하는 것 — 데이터 로더와 결과 기록 장치.
 
-분석 스크립트가 세 개(analyze_speechact · make_report_charts · surface_va_probe)라
-로딩을 각자 구현하면 제외 규칙이 어긋난다. 실제로 '규칙 6 붙여넣은 문서는 빈칸'
-같은 규칙은 한 군데서만 틀려도 문장 수가 달라져 보고서 수치가 갈린다.
-그래서 읽기는 전부 이 파일을 거친다.
+**로더가 여기 있는 이유.** 분석 스크립트가 여럿이라 로딩을 각자 구현하면 제외
+규칙이 어긋난다. '규칙 6 붙여넣은 문서는 빈칸' 같은 규칙은 한 군데서만 틀려도
+문장 수가 달라져 보고서 수치가 갈린다. 그래서 읽기는 전부 이 파일을 거친다.
+정본은 XLSX 다. CSV 는 sync_labels.py 가 뽑은 사본이라 여기서는 XLSX 만 읽는다.
 
-정본은 XLSX 다. CSV 는 sync_labels.py 가 XLSX 에서 뽑아 Git 에 보이게 한 사본이라
-여기서는 XLSX 만 읽는다.
+**Results 가 여기 있는 이유.** 수치를 표준출력으로만 내면 발표·논문에 옮겨 적는
+순간 원본과 끊긴다(1차 보고서에서 실제로 문장 3개가 어긋났다). 그래서 분석
+스크립트는 주장할 만한 값을 Results 에 적어 조각 파일로 남기고,
+collect_results.py 가 그걸 모아 results.csv · RESULTS.md 를 만든다.
 """
 
 import csv
+import json
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -95,3 +98,53 @@ def num(s):
         return float(str(s).strip())
     except (ValueError, AttributeError, TypeError):
         return None
+
+
+# ── 결과 기록 ─────────────────────────────────────────────────────────
+RESULTS_DIR = ROOT / "data" / "output" / "results"
+
+# 그 수치를 발표·논문에서 어디까지 말해도 되는지. 값 자체보다 이게 중요하다.
+STATUS = {
+    "확정": "코더 1인이라도 세기만 하면 되는 값. 다시 세도 같다",
+    "잠정": "판정이 들어간 값. 코더 1인이라 κ 가 없다. 두 번째 코더 뒤 확정된다",
+    "탐색": "검정력이 부족하다. 부호·방향만 말할 수 있고 '없다'고 말하면 안 된다",
+    "관찰": "사례 수준. 통계로 주장하지 않는다",
+}
+FIELDS = ["result_id", "부", "항목", "값", "단위", "n", "상태", "산출", "그림", "비고"]
+
+
+class Results:
+    """분석 스크립트가 주장할 만한 값을 적어 두는 곳.
+
+    사용:
+        R = Results("A", "analyze_speechact.py")
+        R.add("물음표로 끝나지만 Q 가 아닌 비율", 23.1, "%", n=78,
+              status="잠정", note="S 7 · RQ 6 ...")
+        R.save()
+    """
+
+    def __init__(self, prefix, source):
+        self.prefix, self.source, self.rows = prefix, source, []
+
+    def add(self, item, value, unit="", n=None, status="잠정", fig="", note="",
+            part="제4부"):
+        assert status in STATUS, f"상태는 {list(STATUS)} 중 하나여야 한다: {status}"
+        if isinstance(value, float):
+            # r · Cramer's V 처럼 절댓값이 1 미만인 값을 소수 첫째로 반올림하면
+            # 0.668 이 0.7 이 돼 의미가 사라진다. 자릿수를 크기로 정한다.
+            value = "0" if value == 0 else (
+                f"{value:.3f}" if abs(value) < 1 else f"{value:.1f}")
+        self.rows.append({
+            "result_id": f"{self.prefix}-{len(self.rows) + 1:02d}",
+            "부": part, "항목": item, "값": str(value),
+            "단위": unit, "n": "" if n is None else n, "상태": status,
+            "산출": self.source, "그림": fig, "비고": note})
+        return self.rows[-1]
+
+    def save(self):
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        p = RESULTS_DIR / f"{self.prefix}.json"
+        with open(p, "w", encoding="utf-8") as fh:
+            json.dump(self.rows, fh, ensure_ascii=False, indent=1)
+        print(f"\n결과 {len(self.rows)}건 기록: {p.relative_to(ROOT)}")
+        return p

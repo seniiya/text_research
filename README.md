@@ -386,9 +386,11 @@ notes/
 | ② 시트를 만들 때 | `make_coding_sheet.py` | 제1부(AI 응답 전략) 시트 |
 | | `make_speechact_pilot.py` | 제4부(사용자 화행) 시트 |
 | ③ 코딩한 뒤 | `sync_labels.py` | XLSX 에 입력한 라벨 → 같은 이름 CSV. **정본은 XLSX**라 이걸 돌려야 Git 에 보인다 |
-| ④ 분석할 때 | `analyze_speechact.py` | **제4부 1차 분석 전부.** 보고서에 나오는 모든 수치를 여기서 낸다 |
-| | `make_report_charts.py` | 위 결과로 보고서 그림 `c1`~`c6` 을 그린다 |
-| | `surface_va_probe.py` | 정서 표면성 ↔ 설문 자기보고 VA 상관 (다음 실험 사전 탐색) |
+| ④ 분석할 때 | `analyze_survey.py` | **설문 전용.** 인구통계 · 평소 주제/감정 · VA 구조 |
+| | `analyze_speechact.py` | **제4부 1차 분석 전부.** 보고서 수치를 여기서 낸다 |
+| | `surface_va_probe.py` | 정서 표면성 ↔ 자기보고 VA 상관 (다음 실험 사전 탐색) |
+| | `collect_results.py` | 위 셋의 결과를 모아 **`RESULTS.md` · `results.csv`** 생성 |
+| | `make_report_charts.py` | 보고서 그림 `c1`~`c6` |
 | | `agreement.py` | 코더 간 일치도 (Cohen's κ) |
 | | `compare_speechact_versions.py` | 제4부 v1 vs v2 대조표 |
 | | `va_structure.py` | 설문 자기보고 VA 세 값(전/주제1/후)의 구조 확인 |
@@ -396,13 +398,31 @@ notes/
 **분석은 이 순서로 돌린다.** 뒤엣것이 앞엣것의 출력을 읽는다.
 
 ```bash
-python scripts/analyze_speechact.py     # → report_stats.json · participants.csv
+python scripts/analyze_survey.py        # → data/output/results/S.json
+python scripts/analyze_speechact.py     # → report_stats.json · results/A.json
+python scripts/surface_va_probe.py      # → results/V.json
+python scripts/collect_results.py       # → RESULTS.md · data/output/results.csv
 python scripts/make_report_charts.py    # → data/output/report/c1..c6.png
 ```
 
-> **보고서 수치는 손으로 옮겨 적지 않는다.** 1차 보고서는 임시 스크립트로 뽑아
-> Word 에 옮겨 적었더니, 라벨을 고쳤을 때 어느 문장이 틀리는지 알 수 없었다.
-> 지금은 라벨이 바뀌면 위 두 줄을 다시 돌리면 된다.
+> **수치는 손으로 옮겨 적지 않는다.** 1차 보고서는 임시 스크립트로 뽑아 Word 에
+> 옮겨 적었더니, 라벨을 고쳤을 때 어느 문장이 틀리는지 알 수 없었다(실제로 세
+> 문장이 어긋나 있었다). 지금은 위 다섯 줄을 다시 돌리면 된다.
+
+### 결과는 어디에 모이나
+
+**[`RESULTS.md`](RESULTS.md)** 하나만 보면 된다. 지금까지 나온 결과 40건이
+값·n·산출 스크립트·그림 번호와 함께 들어 있다. 기계용은
+[`data/output/results.csv`](data/output/results.csv).
+
+**`상태` 열이 값보다 중요하다.** 그 수치를 발표·논문에서 어디까지 말해도 되는지를 정한다.
+
+| 상태 | 뜻 |
+|---|---|
+| `확정` | 세기만 하면 되는 값. 코더가 1명이어도 다시 세면 같다 |
+| `잠정` | 판정이 들어간 값. **κ 가 없다.** 두 번째 코더 뒤 확정으로 올라간다 |
+| `탐색` | 검정력 부족. 방향만 말하고 **'없다'고 말하면 안 된다** |
+| `관찰` | 사례 수준. 통계로 주장하지 않는다 |
 
 **직접 실행하지 않는 것 3개** — 위 스크립트들이 안에서 불러 쓴다.
 
